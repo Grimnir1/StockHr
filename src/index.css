@@ -1,0 +1,35 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+
+  --color-primary: #2563EB;
+  --color-primary-dark: #1E3A5F;
+  --color-success: #16A34A;
+  --color-warning: #D97706;
+  --color-danger: #DC2626;
+  
+  --color-neutral-50: #F8FAFC;
+  --color-neutral-100: #F1F5F9;
+  --color-neutral-700: #374151;
+
+  --text-sm: 14px;
+  --line-height-sm: 1.5;
+}
+
+@layer base {
+  body {
+    @apply bg-neutral-50 text-neutral-700 font-sans text-sm leading-relaxed;
+  }
+  
+  h1 { @apply text-2xl font-bold text-primary-dark; }
+  h2 { @apply text-xl font-semibold text-primary-dark; }
+  h3 { @apply text-lg font-medium text-primary-dark; }
+}
+
+@layer components {
+  .card {
+    @apply bg-white p-5 rounded-lg shadow-sm border border-neutral-100;
+  }
+}
