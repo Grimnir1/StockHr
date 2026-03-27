@@ -39,15 +39,15 @@ const auditColumns: ColumnDef<AuditLog>[] = [
       );
     },
   },
-  {
-    header: 'Entity',
-    accessorKey: 'entity_type',
-    cell: ({ row }) => (
-      <span className="text-xs text-neutral-700/60">
-        {row.original.entity_type} <span className="font-mono text-[10px]">#{row.original.entity_id}</span>
-      </span>
-    ),
-  },
+  // {
+  //   header: 'Entity',
+  //   accessorKey: 'entity_type',
+  //   cell: ({ row }) => (
+  //     <span className="text-xs text-neutral-700/60">
+  //       {row.original.entity_type} <span className="font-mono text-[10px]">#{row.original.entity_id}</span>
+  //     </span>
+  //   ),
+  // },
   // {
   //   header: 'IP Address',
   //   accessorKey: 'ip_address',

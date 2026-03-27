@@ -141,8 +141,8 @@ export default function App() {
         return <RoleGuard roles={['admin', 'manager']}><SupplierManagementPage /></RoleGuard>;
       case '/categories':
         return <RoleGuard roles={['admin', 'manager']}><CategoryManagementPage /></RoleGuard>;
-      case '/settings':
-        return <RoleGuard roles={['admin']}><SettingsPage /></RoleGuard>;
+      // case '/settings':
+      //   return <RoleGuard roles={['admin']}><SettingsPage /></RoleGuard>;
       case '/profile':
         return <ProfilePage />;
       default:
