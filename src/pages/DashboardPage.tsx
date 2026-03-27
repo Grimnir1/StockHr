@@ -13,7 +13,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { DataTable } from '../components/ui/DataTable';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ColumnDef } from '@tanstack/react-table';
-import { StockMovement, Product, Alert } from '../types';
+import { StockMovement, Product } from '../types';
 import { formatDate, cn } from '../lib/utils';
 import { Line, Doughnut } from 'react-chartjs-2';
 import { db, handleFirestoreError, OperationType } from '../firebase';
@@ -93,7 +93,6 @@ const movementColumns: ColumnDef<StockMovement>[] = [
 export default function DashboardPage() {
   const [products, setProducts] = React.useState<Product[]>([]);
   const [movements, setMovements] = React.useState<StockMovement[]>([]);
-  const [alerts, setAlerts] = React.useState<Alert[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [isMovementModalOpen, setIsMovementModalOpen] = React.useState(false);
   const [movementType, setMovementType] = React.useState<'in' | 'out'>('in');
@@ -106,33 +105,39 @@ export default function DashboardPage() {
   React.useEffect(() => {
     const qProducts = query(collection(db, 'products'));
     const qMovements = query(collection(db, 'movements'), orderBy('movement_date', 'desc'), limit(10));
-    const qAlerts = query(collection(db, 'alerts'), limit(20));
 
     const unsubProducts = onSnapshot(qProducts, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Product)));
     }, (error) => {
       handleFirestoreError(error, OperationType.LIST, 'products');
+      setLoading(false);
     });
 
     const unsubMovements = onSnapshot(qMovements, (snapshot) => {
       setMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as StockMovement)));
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'movements');
-    });
-
-    const unsubAlerts = onSnapshot(qAlerts, (snapshot) => {
-      setAlerts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Alert)));
       setLoading(false);
     }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, 'alerts');
+      handleFirestoreError(error, OperationType.LIST, 'movements');
+      setLoading(false);
     });
 
     return () => {
       unsubProducts();
       unsubMovements();
-      unsubAlerts();
     };
   }, []);
+
+  const lowStockAlertsCount = React.useMemo(() => {
+    return products.filter((product) => {
+      const currentStock = Number(product.current_stock || 0);
+      const reorderPoint = Number(product.reorder_point || 0);
+      return currentStock <= reorderPoint;
+    }).length;
+  }, [products]);
+
+  const slowMovingItemsCount = React.useMemo(() => {
+    return products.filter((product) => product.velocity === 'slow').length;
+  }, [products]);
 
   const chartData = React.useMemo(() => {
     const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -202,9 +207,9 @@ export default function DashboardPage() {
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard title="Total Products" value={products.length} icon={Box} colour="blue" />
-        <KPICard title="Low Stock Alerts" value={alerts.length} icon={AlertTriangle} colour="red" trend={-5} />
+        <KPICard title="Low Stock Alerts" value={lowStockAlertsCount} icon={AlertTriangle} colour="red" trend={-5} />
         <KPICard title="Stock Movements Today" value={movements.length} icon={ArrowLeftRight} colour="green" />
-        <KPICard title="Slow-Moving Items" value="156" icon={TrendingDown} colour="amber" />
+        <KPICard title="Slow-Moving Items" value={slowMovingItemsCount} icon={TrendingDown} colour="amber" />
       </div>
 
       {/* Charts Row */}

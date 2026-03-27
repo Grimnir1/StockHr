@@ -265,17 +265,19 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               </a>
             </RoleGuard>
             <div className="h-8 w-px bg-neutral-100 mx-2" />
-            <div className="flex items-center gap-3">
-              <div className="text-right hidden sm:block">
-                <p className="text-xs font-bold text-primary-dark">{user?.name}</p>
-                <p className="text-[10px] text-neutral-700/40 uppercase font-bold tracking-wider">
-                  {user?.role}
-                </p>
+            <a href="/profile">
+              <div className="flex items-center gap-3">
+                <div className="text-right hidden sm:block">
+                  <p className="text-xs font-bold text-primary-dark">{user?.name}</p>
+                  <p className="text-[10px] text-neutral-700/40 uppercase font-bold tracking-wider">
+                    {user?.role}
+                  </p>
+                </div>
+                <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
+                  {user?.name.charAt(0)}
+                </div>
               </div>
-              <div className="w-8 h-8 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs">
-                {user?.name.charAt(0)}
-              </div>
-            </div>
+            </a>
           </div>
         </header>
 
