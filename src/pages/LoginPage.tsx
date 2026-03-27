@@ -185,8 +185,8 @@ export default function LoginPage() {
           <div className="w-16 h-16 bg-primary rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-primary/20">
             <Package size={32} className="text-white" />
           </div>
-          <h1 className="text-3xl font-bold text-primary-dark">StockSense</h1>
-          <p className="text-neutral-700/60 mt-2">Inventory & Decision Intelligence</p>
+          <h1 className="text-3xl font-bold text-primary-dark">StockHr</h1>
+          {/* <p className="text-neutral-700/60 mt-2">Inventory & Decision Intelligence</p> */}
         </div>
 
         <div className="bg-white p-8 rounded-2xl shadow-xl border border-neutral-100">
