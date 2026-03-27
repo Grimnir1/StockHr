@@ -150,11 +150,14 @@ export default function SupplierManagementPage() {
 
     setIsSubmitting(true);
     try {
+      const normalizedEmail = editFormData.email.trim();
+
       await setDoc(
         doc(db, 'suppliers', editingSupplier.id),
         {
           ...editingSupplier,
           ...editFormData,
+          email: normalizedEmail ? normalizedEmail : null,
           updated_at: new Date().toISOString(),
         },
         { merge: true }
@@ -280,7 +283,6 @@ export default function SupplierManagementPage() {
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Email</label>
               <input
-                required
                 type="email"
                 value={editFormData.email}
                 onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
