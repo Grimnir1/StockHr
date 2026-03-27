@@ -92,6 +92,8 @@ const getProductColumns = (categories: Category[]): ColumnDef<Product>[] => [
 
 export default function ProductListPage() {
   const [search, setSearch] = React.useState('');
+  const [selectedCategory, setSelectedCategory] = React.useState('');
+  const [selectedStatus, setSelectedStatus] = React.useState('');
   const [products, setProducts] = React.useState<Product[]>([]);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [suppliers, setSuppliers] = React.useState<any[]>([]);
@@ -147,10 +149,30 @@ export default function ProductListPage() {
     };
   }, []);
 
-  const filteredProducts = products.filter(p => 
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.sku.toLowerCase().includes(search.toLowerCase())
-  );
+  const filteredProducts = React.useMemo(() => {
+    const searchTerm = search.trim().toLowerCase();
+
+    return products.filter((p) => {
+      const matchesSearch = !searchTerm
+        || p.name.toLowerCase().includes(searchTerm)
+        || p.sku.toLowerCase().includes(searchTerm)
+        || (p.description || '').toLowerCase().includes(searchTerm);
+
+      const matchesCategory = !selectedCategory || p.category_id === selectedCategory;
+
+      const matchesStatus = !selectedStatus || (() => {
+        const currentStock = Number(p.current_stock || 0);
+        const reorderPoint = Number(p.reorder_point || 0);
+
+        if (selectedStatus === 'out-of-stock') return currentStock <= 0;
+        if (selectedStatus === 'low-stock') return currentStock > 0 && currentStock <= reorderPoint;
+        if (selectedStatus === 'in-stock') return currentStock > reorderPoint;
+        return true;
+      })();
+
+      return matchesSearch && matchesCategory && matchesStatus;
+    });
+  }, [products, search, selectedCategory, selectedStatus]);
 
   const columns = React.useMemo(() => getProductColumns(categories), [categories]);
 
@@ -251,16 +273,36 @@ export default function ProductListPage() {
           />
         </div>
         <div className="flex gap-2">
-          <select className="px-4 py-2.5 bg-white border border-neutral-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="px-4 py-2.5 bg-white border border-neutral-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
             <option value="">All Categories</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>{category.name}</option>
+            ))}
           </select>
-          <select className="px-4 py-2.5 bg-white border border-neutral-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value)}
+            className="px-4 py-2.5 bg-white border border-neutral-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+          >
             <option value="">All Statuses</option>
             <option value="in-stock">In Stock</option>
             <option value="low-stock">Low Stock</option>
             <option value="out-of-stock">Out of Stock</option>
           </select>
-          <button className="p-2.5 bg-white border border-neutral-100 rounded-xl hover:bg-neutral-50 transition-colors">
+          <button
+            type="button"
+            onClick={() => {
+              setSearch('');
+              setSelectedCategory('');
+              setSelectedStatus('');
+            }}
+            className="p-2.5 bg-white border border-neutral-100 rounded-xl hover:bg-neutral-50 transition-colors"
+            title="Clear search and filters"
+          >
             <Filter size={18} />
           </button>
         </div>
@@ -268,6 +310,7 @@ export default function ProductListPage() {
 
       <DataTable 
         columns={columns} 
+        isLoading={loading}
         data={filteredProducts} 
         onRowClick={(p: Product) => {
           window.history.pushState({}, '', `/products/${p.id}`);
