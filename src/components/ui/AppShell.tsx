@@ -171,7 +171,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center shrink-0">
               <Package size={20} />
             </div>
-            {!sidebarCollapsed && <span className="font-bold text-lg tracking-tight">StockSense</span>}
+            {!sidebarCollapsed && <span className="font-bold text-lg tracking-tight">StockHr</span>}
           </div>
         </div>
 
