@@ -1,5 +1,5 @@
 import React from 'react';
-import { History, Search, Filter, Download, Info } from 'lucide-react';
+import { Search, Filter, Download } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { DataTable } from '../components/ui/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
@@ -29,9 +29,11 @@ const auditColumns: ColumnDef<AuditLog>[] = [
         UPDATE: 'bg-warning/10 text-warning border-warning/20',
         DELETE: 'bg-danger/10 text-danger border-danger/20',
         LOGIN: 'bg-primary/10 text-primary border-primary/20',
+        LOGOUT: 'bg-secondary/10 text-secondary border-secondary/20',
+
       };
       return (
-        <span className={cn('px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider', colors[action])}>
+        <span className={cn('px-2 py-0.5 rounded text-[10px] font-bold border uppercase tracking-wider', colors[action] || 'bg-neutral-100 text-neutral-700 border-neutral-200')}>
           {action}
         </span>
       );
@@ -46,11 +48,11 @@ const auditColumns: ColumnDef<AuditLog>[] = [
       </span>
     ),
   },
-  {
-    header: 'IP Address',
-    accessorKey: 'ip_address',
-    cell: ({ getValue }) => <span className="font-mono text-[10px] text-neutral-700/40">{getValue() as string}</span>,
-  },
+  // {
+  //   header: 'IP Address',
+  //   accessorKey: 'ip_address',
+  //   cell: ({ getValue }) => <span className="font-mono text-[10px] text-neutral-700/40">{getValue() as string}</span>,
+  // },
   {
     header: 'Details',
     accessorKey: 'details',
@@ -68,15 +70,54 @@ const auditColumns: ColumnDef<AuditLog>[] = [
 export default function AuditTrailPage() {
   const [logs, setLogs] = React.useState<AuditLog[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [search, setSearch] = React.useState('');
+  const [actionFilter, setActionFilter] = React.useState('');
 
   React.useEffect(() => {
     const q = query(collection(db, 'audit_logs'), orderBy('created_at', 'desc'));
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as AuditLog)));
+      const mapped = snapshot.docs.map((logDoc) => {
+        const data = logDoc.data() as any;
+        return {
+          id: logDoc.id,
+          user_name: data.user_name || 'System',
+          action: data.action || 'UPDATE',
+          entity_type: data.entity_type || 'Unknown',
+          entity_id: data.entity_id || '-',
+          details: data.details || 'No details provided',
+          ip_address: data.ip_address || '-',
+          created_at: data.created_at || new Date().toISOString(),
+        } as AuditLog;
+      });
+      setLogs(mapped);
+      setLoading(false);
+    }, (error) => {
+      console.error('Error loading audit logs:', error);
       setLoading(false);
     });
     return () => unsubscribe();
   }, []);
+
+  const filteredLogs = React.useMemo(() => {
+    const searchTerm = search.trim().toLowerCase();
+
+    return logs.filter((log) => {
+      const matchesAction = !actionFilter || log.action === actionFilter;
+
+      const matchesSearch = !searchTerm || [
+        log.user_name,
+        log.action,
+        log.entity_type,
+        log.entity_id,
+        log.details,
+        log.ip_address,
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(searchTerm));
+
+      return matchesAction && matchesSearch;
+    });
+  }, [logs, search, actionFilter]);
 
   return (
     <div className="space-y-6">
@@ -97,23 +138,37 @@ export default function AuditTrailPage() {
           <input
             type="text"
             placeholder="Search logs by user, entity, or details..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-neutral-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
         </div>
-        <select className="px-4 py-2.5 bg-white border border-neutral-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20">
+        <select
+          value={actionFilter}
+          onChange={(e) => setActionFilter(e.target.value)}
+          className="px-4 py-2.5 bg-white border border-neutral-100 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20"
+        >
           <option value="">All Actions</option>
           <option value="CREATE">CREATE</option>
           <option value="UPDATE">UPDATE</option>
           <option value="DELETE">DELETE</option>
           <option value="LOGIN">LOGIN</option>
+          <option value="LOGOUT">LOGOUT</option>
         </select>
-        <button className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-neutral-100 rounded-xl text-sm font-bold hover:bg-neutral-50 transition-colors">
+        <button
+          type="button"
+          onClick={() => {
+            setSearch('');
+            setActionFilter('');
+          }}
+          className="flex items-center justify-center gap-2 px-4 py-2.5 bg-white border border-neutral-100 rounded-xl text-sm font-bold hover:bg-neutral-50 transition-colors"
+        >
           <Filter size={18} />
-          More Filters
+          Clear Filters
         </button>
       </div>
 
-      <DataTable columns={auditColumns} data={logs} />
+      <DataTable columns={auditColumns} data={filteredLogs} isLoading={loading} />
     </div>
   );
 }

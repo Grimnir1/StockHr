@@ -22,6 +22,8 @@ import {
 import { cn } from '../../lib/utils';
 import { RoleGuard } from './RoleGuard';
 import { AlertBanner } from './AlertBanner';
+import { collection, onSnapshot, query } from 'firebase/firestore';
+import { Product } from '../../types';
 
 interface NavItem {
   label: string;
@@ -79,12 +81,69 @@ const navGroups: NavGroup[] = [
   },
 ];
 
-import { auth, signOut } from '../../firebase';
+import { auth, signOut, db } from '../../firebase';
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuthStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [dbAlertKeys, setDbAlertKeys] = React.useState<string[]>([]);
+  const [derivedAlertKeys, setDerivedAlertKeys] = React.useState<string[]>([]);
+
+  React.useEffect(() => {
+    const alertsQuery = query(collection(db, 'alerts'));
+    const unsubscribe = onSnapshot(alertsQuery, (snapshot) => {
+      const keys = snapshot.docs
+        .map((alertDoc) => {
+          const data = alertDoc.data() as any;
+          const normalizedType = ['low_stock', 'slow_moving', 'out_of_stock'].includes(data.type)
+            ? data.type
+            : 'low_stock';
+          const isAcknowledged =
+            data.is_acknowledged === true || data.status === 'acknowledged' || data.status === 'resolved';
+
+          if (isAcknowledged) return null;
+          return `${normalizedType}:${data.product_id || alertDoc.id}`;
+        })
+        .filter(Boolean) as string[];
+
+      setDbAlertKeys(keys);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  React.useEffect(() => {
+    const productsQuery = query(collection(db, 'products'));
+    const unsubscribe = onSnapshot(productsQuery, (snapshot) => {
+      const keys = snapshot.docs.flatMap((productDoc) => {
+        const product = { id: productDoc.id, ...productDoc.data() } as Product;
+        const currentStock = Number(product.current_stock || 0);
+        const reorderPoint = Number(product.reorder_point || 0);
+        const nextKeys: string[] = [];
+
+        if (currentStock <= 0) {
+          nextKeys.push(`out_of_stock:${product.id}`);
+        } else if (currentStock <= reorderPoint) {
+          nextKeys.push(`low_stock:${product.id}`);
+        }
+
+        if (product.velocity === 'slow') {
+          nextKeys.push(`slow_moving:${product.id}`);
+        }
+
+        return nextKeys;
+      });
+
+      setDerivedAlertKeys(keys);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const alertCount = React.useMemo(() => {
+    return new Set([...derivedAlertKeys, ...dbAlertKeys]).size;
+  }, [dbAlertKeys, derivedAlertKeys]);
 
   const handleLogout = async () => {
     try {
@@ -196,12 +255,14 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
           <div className="flex items-center gap-4">
             <RoleGuard roles={['admin', 'manager']}>
-              <button className="p-2 rounded-lg hover:bg-neutral-50 transition-colors text-neutral-700/60 relative">
+              <a href="/alerts" className="p-2 rounded-lg hover:bg-neutral-50 transition-colors text-neutral-700/60 relative">
                 <Bell size={20} />
-                <span className="absolute top-1.5 right-1.5 w-4 h-4 bg-danger text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white">
-                  3
-                </span>
-              </button>
+                {alertCount > 0 && (
+                  <span className="absolute top-1.5 right-1.5 min-w-4 h-4 px-1 bg-danger text-white text-[10px] font-bold flex items-center justify-center rounded-full border-2 border-white">
+                    {alertCount > 99 ? '99+' : alertCount}
+                  </span>
+                )}
+              </a>
             </RoleGuard>
             <div className="h-8 w-px bg-neutral-100 mx-2" />
             <div className="flex items-center gap-3">
@@ -220,7 +281,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
         {/* Global Alert Banner */}
         <RoleGuard roles={['admin', 'manager']}>
-          <AlertBanner count={3} onDismiss={() => {}} />
+          <AlertBanner count={alertCount} onDismiss={() => {}} />
         </RoleGuard>
 
         {/* Page Content */}

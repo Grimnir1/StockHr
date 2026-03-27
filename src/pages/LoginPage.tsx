@@ -7,7 +7,7 @@ import { useAuthStore } from '../stores/auth.store';
 import { toast } from 'react-hot-toast';
 import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, db } from '../firebase';
 import { updateProfile, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -16,6 +16,23 @@ const loginSchema = z.object({
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
+
+async function logLoginAudit(user: { id: string; name?: string; email?: string }) {
+  try {
+    await addDoc(collection(db, 'audit_logs'), {
+      user_id: user.id,
+      user_name: user.name || user.email || 'Unknown User',
+      action: 'LOGIN',
+      entity_type: 'Auth',
+      entity_id: user.id,
+      details: `User signed in (${user.email || 'no-email'})`,
+      ip_address: '-',
+      created_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Failed to write LOGIN audit log:', error);
+  }
+}
 
 export default function LoginPage() {
   const setUser = useAuthStore((state) => state.setUser);
@@ -88,6 +105,12 @@ export default function LoginPage() {
           created_at: serverTimestamp(),
           last_login_at: serverTimestamp(),
         });
+
+        await logLoginAudit({
+          id: userCredential.user.uid,
+          name: data.name,
+          email: data.email,
+        });
         
         toast.success('Account created successfully!');
       } else {
@@ -99,7 +122,14 @@ export default function LoginPage() {
         
         try {
           // 1. Try standard Firebase Auth
-          await signInWithEmailAndPassword(auth, data.email, data.password);
+          const userCredential = await signInWithEmailAndPassword(auth, data.email, data.password);
+
+          await logLoginAudit({
+            id: userCredential.user.uid,
+            name: userCredential.user.displayName || undefined,
+            email: userCredential.user.email || data.email,
+          });
+
           toast.success('Signed in successfully!');
         } catch (authError: any) {
           console.log('Standard auth failed, checking for reset password backdoor...', authError.code);
@@ -118,6 +148,13 @@ export default function LoginPage() {
             if (userData.password === data.password) {
               // Manual login success
               setUser({ id: userDoc.id, ...userData } as any, 'demo-token');
+
+              await logLoginAudit({
+                id: userDoc.id,
+                name: userData.name,
+                email: userData.email,
+              });
+
               toast.success('Signed in with reset password!');
               return;
             }
