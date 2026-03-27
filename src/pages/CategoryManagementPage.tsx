@@ -1,78 +1,74 @@
 import React from 'react';
-import { Tags, Search, Plus, Edit, Trash2, Package } from 'lucide-react';
+import { Search, Plus, Edit, Trash2, Package } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { DataTable } from '../components/ui/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
-import { Category } from '../types';
+import { Category, Product } from '../types';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, doc, setDoc } from 'firebase/firestore';
-import { Modal } from '../components/ui/Modal';
+import { collection, query, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { Modal, ConfirmModal } from '../components/ui/Modal';
 import { toast } from 'react-hot-toast';
 
-const categoryColumns: ColumnDef<Category>[] = [
-  {
-    header: 'Category Name',
-    accessorKey: 'name',
-    cell: ({ row }) => (
-      <div className="flex items-center gap-3">
-        <div
-          className="w-3 h-3 rounded-full"
-          style={{ backgroundColor: row.original.color }}
-        />
-        <span className="font-bold">{row.original.name}</span>
-      </div>
-    ),
-  },
-  {
-    header: 'Description',
-    accessorKey: 'description',
-    cell: ({ getValue }) => <span className="text-xs text-neutral-700/60">{getValue() as string || '-'}</span>,
-  },
-  {
-    header: 'Products',
-    accessorKey: 'product_count',
-    cell: ({ getValue }) => (
-      <div className="flex items-center gap-2">
-        <Package size={14} className="text-neutral-700/20" />
-        <span className="font-medium">{getValue() as number || 0} Items</span>
-      </div>
-    ),
-  },
-  {
-    header: 'Actions',
-    id: 'actions',
-    cell: () => (
-      <div className="flex items-center gap-2">
-        <button className="p-1.5 hover:bg-neutral-100 rounded text-primary transition-colors">
-          <Edit size={14} />
-        </button>
-        <button className="p-1.5 hover:bg-danger/10 rounded text-danger transition-colors">
-          <Trash2 size={14} />
-        </button>
-      </div>
-    ),
-  },
-];
-
 export default function CategoryManagementPage() {
+  const [search, setSearch] = React.useState('');
   const [categories, setCategories] = React.useState<Category[]>([]);
-  const [loading, setLoading] = React.useState(true);
+  const [productCountByCategory, setProductCountByCategory] = React.useState<Record<string, number>>({});
+  const [loadingCategories, setLoadingCategories] = React.useState(true);
+  const [loadingProducts, setLoadingProducts] = React.useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [editingCategory, setEditingCategory] = React.useState<Category | null>(null);
+  const [categoryToDelete, setCategoryToDelete] = React.useState<Category | null>(null);
   const [formData, setFormData] = React.useState({
+    name: '',
+    description: '',
+    color: '#2563EB',
+  });
+  const [editFormData, setEditFormData] = React.useState({
     name: '',
     description: '',
     color: '#2563EB',
   });
 
   React.useEffect(() => {
-    const q = query(collection(db, 'categories'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const categoriesQuery = query(collection(db, 'categories'));
+    const productsQuery = query(collection(db, 'products'));
+
+    const unsubCategories = onSnapshot(categoriesQuery, (snapshot) => {
       setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Category)));
-      setLoading(false);
+      setLoadingCategories(false);
     });
-    return () => unsubscribe();
+
+    const unsubProducts = onSnapshot(productsQuery, (snapshot) => {
+      const counts = snapshot.docs.reduce((acc, productDoc) => {
+        const product = productDoc.data() as Product;
+        const categoryId = product.category_id;
+        if (!categoryId) return acc;
+        acc[categoryId] = (acc[categoryId] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      setProductCountByCategory(counts);
+      setLoadingProducts(false);
+    });
+
+    return () => {
+      unsubCategories();
+      unsubProducts();
+    };
   }, []);
+
+  const loading = loadingCategories || loadingProducts;
+
+  const categoriesWithCounts = React.useMemo(() => {
+    return categories.map((category) => ({
+      ...category,
+      product_count: productCountByCategory[category.id] || 0,
+    }));
+  }, [categories, productCountByCategory]);
 
   const handleAddCategory = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,6 +92,133 @@ export default function CategoryManagementPage() {
     }
   };
 
+  const openEditModal = (category: Category) => {
+    setEditingCategory(category);
+    setEditFormData({
+      name: category.name || '',
+      description: category.description || '',
+      color: category.color || '#2563EB',
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCategory) return;
+
+    setIsSubmitting(true);
+    try {
+      await setDoc(doc(db, 'categories', editingCategory.id), {
+        ...editingCategory,
+        ...editFormData,
+        updated_at: new Date().toISOString(),
+      }, { merge: true });
+      toast.success('Category updated successfully!');
+      setIsEditModalOpen(false);
+      setEditingCategory(null);
+    } catch (error) {
+      console.error('Error updating category:', error);
+      toast.error('Failed to update category');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openDeleteModal = (category: Category) => {
+    setCategoryToDelete(category);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleDeleteCategory = async () => {
+    if (!categoryToDelete) return;
+
+    const categoryProductCount = productCountByCategory[categoryToDelete.id] || 0;
+    if (categoryProductCount > 0) {
+      toast.error('Cannot delete category with assigned products');
+      setIsDeleteModalOpen(false);
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'categories', categoryToDelete.id));
+      toast.success('Category deleted successfully!');
+      setIsDeleteModalOpen(false);
+      setCategoryToDelete(null);
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      toast.error('Failed to delete category');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const categoryColumns = React.useMemo<ColumnDef<Category>[]>(() => [
+    {
+      header: 'Category Name',
+      accessorKey: 'name',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-3">
+          <div
+            className="w-3 h-3 rounded-full"
+            style={{ backgroundColor: row.original.color }}
+          />
+          <span className="font-bold">{row.original.name}</span>
+        </div>
+      ),
+    },
+    {
+      header: 'Description',
+      accessorKey: 'description',
+      cell: ({ getValue }) => <span className="text-xs text-neutral-700/60">{getValue() as string || '-'}</span>,
+    },
+    {
+      header: 'Products',
+      accessorKey: 'product_count',
+      cell: ({ getValue }) => (
+        <div className="flex items-center gap-2">
+          <Package size={14} className="text-neutral-700/20" />
+          <span className="font-medium">{getValue() as number || 0} Items</span>
+        </div>
+      ),
+    },
+    {
+      header: 'Actions',
+      id: 'actions',
+      cell: ({ row }) => (
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => openEditModal(row.original)}
+            className="p-1.5 hover:bg-neutral-100 rounded text-primary transition-colors"
+            title="Edit category"
+          >
+            <Edit size={14} />
+          </button>
+          <button
+            type="button"
+            onClick={() => openDeleteModal(row.original)}
+            className="p-1.5 hover:bg-danger/10 rounded text-danger transition-colors"
+            title="Delete category"
+          >
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ),
+    },
+  ], [productCountByCategory]);
+
+  const filteredCategories = React.useMemo(() => {
+    const searchTerm = search.trim().toLowerCase();
+    if (!searchTerm) return categoriesWithCounts;
+
+    return categoriesWithCounts.filter((category) => {
+      const name = (category.name || '').toLowerCase();
+      const description = (category.description || '').toLowerCase();
+      return name.includes(searchTerm) || description.includes(searchTerm);
+    });
+  }, [categoriesWithCounts, search]);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -118,12 +241,83 @@ export default function CategoryManagementPage() {
           <input
             type="text"
             placeholder="Search categories..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-full pl-10 pr-4 py-2.5 bg-white border border-neutral-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all"
           />
         </div>
       </div>
 
-      <DataTable columns={categoryColumns} data={categories} />
+      <DataTable columns={categoryColumns} data={filteredCategories} isLoading={loading} />
+
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingCategory(null);
+        }}
+        title="Edit Category"
+        footer={
+          <>
+            <button
+              onClick={() => {
+                setIsEditModalOpen(false);
+                setEditingCategory(null);
+              }}
+              className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-md"
+            >
+              Cancel
+            </button>
+            <button
+              form="edit-category-form"
+              disabled={isSubmitting}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50"
+            >
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </button>
+          </>
+        }
+      >
+        <form id="edit-category-form" onSubmit={handleUpdateCategory} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Category Name</label>
+            <input
+              required
+              type="text"
+              value={editFormData.name}
+              onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm"
+              placeholder="Electronics"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Description</label>
+            <textarea
+              value={editFormData.description}
+              onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm min-h-[80px]"
+              placeholder="Electronic components and parts..."
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Color Code</label>
+            <div className="flex gap-2">
+              <input
+                type="color"
+                value={editFormData.color}
+                onChange={(e) => setEditFormData({ ...editFormData, color: e.target.value })}
+                className="w-10 h-10 p-0 border-none bg-transparent cursor-pointer"
+              />
+              <input
+                type="text"
+                value={editFormData.color}
+                onChange={(e) => setEditFormData({ ...editFormData, color: e.target.value })}
+                className="flex-1 px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm font-mono"
+              />
+            </div>
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={isAddModalOpen}
@@ -182,6 +376,25 @@ export default function CategoryManagementPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        title="Delete Category"
+        message={
+          categoryToDelete
+            ? `Delete ${categoryToDelete.name}? Categories with assigned products cannot be deleted.`
+            : 'Delete this category?'
+        }
+        confirmLabel={isDeleting ? 'Deleting...' : 'Delete Category'}
+        confirmVariant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDeleteCategory}
+        onCancel={() => {
+          if (isDeleting) return;
+          setIsDeleteModalOpen(false);
+          setCategoryToDelete(null);
+        }}
+      />
     </div>
   );
 }

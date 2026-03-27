@@ -5,11 +5,14 @@ import { DataTable } from '../components/ui/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Supplier } from '../types';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, doc, setDoc } from 'firebase/firestore';
-import { Modal } from '../components/ui/Modal';
+import { collection, query, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { Modal, ConfirmModal } from '../components/ui/Modal';
 import { toast } from 'react-hot-toast';
 
-const supplierColumns: ColumnDef<Supplier>[] = [
+const getSupplierColumns = (
+  onEdit: (supplier: Supplier) => void,
+  onDelete: (supplier: Supplier) => void
+): ColumnDef<Supplier>[] => [
   {
     header: 'Company Name',
     accessorKey: 'name',
@@ -48,12 +51,22 @@ const supplierColumns: ColumnDef<Supplier>[] = [
   {
     header: 'Actions',
     id: 'actions',
-    cell: () => (
+    cell: ({ row }) => (
       <div className="flex items-center gap-2">
-        <button className="p-1.5 hover:bg-neutral-100 rounded text-primary transition-colors">
+        <button
+          type="button"
+          onClick={() => onEdit(row.original)}
+          className="p-1.5 hover:bg-neutral-100 rounded text-primary transition-colors"
+          title="Edit supplier"
+        >
           <Edit size={14} />
         </button>
-        <button className="p-1.5 hover:bg-danger/10 rounded text-danger transition-colors">
+        <button
+          type="button"
+          onClick={() => onDelete(row.original)}
+          className="p-1.5 hover:bg-danger/10 rounded text-danger transition-colors"
+          title="Delete supplier"
+        >
           <Trash2 size={14} />
         </button>
       </div>
@@ -65,8 +78,20 @@ export default function SupplierManagementPage() {
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
+  const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
   const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [editingSupplier, setEditingSupplier] = React.useState<Supplier | null>(null);
+  const [supplierToDelete, setSupplierToDelete] = React.useState<Supplier | null>(null);
   const [formData, setFormData] = React.useState({
+    name: '',
+    contact_person: '',
+    email: '',
+    phone: '',
+    address: '',
+  });
+  const [editFormData, setEditFormData] = React.useState({
     name: '',
     contact_person: '',
     email: '',
@@ -104,6 +129,70 @@ export default function SupplierManagementPage() {
     }
   };
 
+  const openEditModal = (supplier: Supplier) => {
+    setEditingSupplier(supplier);
+    setEditFormData({
+      name: supplier.name || '',
+      contact_person: supplier.contact_person || '',
+      email: supplier.email || '',
+      phone: supplier.phone || '',
+      address: supplier.address || '',
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleUpdateSupplier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingSupplier) return;
+
+    setIsSubmitting(true);
+    try {
+      await setDoc(
+        doc(db, 'suppliers', editingSupplier.id),
+        {
+          ...editingSupplier,
+          ...editFormData,
+          updated_at: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+      toast.success('Supplier updated successfully!');
+      setIsEditModalOpen(false);
+      setEditingSupplier(null);
+    } catch (error) {
+      console.error('Error updating supplier:', error);
+      toast.error('Failed to update supplier');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openDeleteModal = (supplier: Supplier) => {
+    setSupplierToDelete(supplier);
+    setIsDeleteModalOpen(true);
+  };
+
+  const handleDeleteSupplier = async () => {
+    if (!supplierToDelete) return;
+
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'suppliers', supplierToDelete.id));
+      toast.success('Supplier deleted successfully!');
+      setIsDeleteModalOpen(false);
+      setSupplierToDelete(null);
+    } catch (error) {
+      console.error('Error deleting supplier:', error);
+      toast.error('Failed to delete supplier');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const supplierColumns = React.useMemo(() => {
+    return getSupplierColumns(openEditModal, openDeleteModal);
+  }, []);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -132,6 +221,94 @@ export default function SupplierManagementPage() {
       </div>
 
       <DataTable columns={supplierColumns} data={suppliers} />
+
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingSupplier(null);
+        }}
+        title="Edit Supplier"
+        footer={
+          <>
+            <button
+              onClick={() => {
+                setIsEditModalOpen(false);
+                setEditingSupplier(null);
+              }}
+              className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-md"
+            >
+              Cancel
+            </button>
+            <button
+              form="edit-supplier-form"
+              disabled={isSubmitting}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50"
+            >
+              {isSubmitting ? 'Saving...' : 'Save Changes'}
+            </button>
+          </>
+        }
+      >
+        <form id="edit-supplier-form" onSubmit={handleUpdateSupplier} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Company Name</label>
+            <input
+              required
+              type="text"
+              value={editFormData.name}
+              onChange={(e) => setEditFormData({ ...editFormData, name: e.target.value })}
+              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm"
+              placeholder="Industrial Supplies Ltd"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Contact Person</label>
+            <input
+              required
+              type="text"
+              value={editFormData.contact_person}
+              onChange={(e) => setEditFormData({ ...editFormData, contact_person: e.target.value })}
+              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm"
+              placeholder="Jane Smith"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Email</label>
+              <input
+                required
+                type="email"
+                value={editFormData.email}
+                onChange={(e) => setEditFormData({ ...editFormData, email: e.target.value })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm"
+                placeholder="jane@supplies.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Phone</label>
+              <input
+                required
+                type="tel"
+                value={editFormData.phone}
+                onChange={(e) => setEditFormData({ ...editFormData, phone: e.target.value })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm"
+                placeholder="+1 234 567 890"
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Address</label>
+            <textarea
+              required
+              value={editFormData.address}
+              onChange={(e) => setEditFormData({ ...editFormData, address: e.target.value })}
+              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm min-h-[80px]"
+              placeholder="123 Supply Road, Logistics City..."
+            />
+          </div>
+        </form>
+      </Modal>
 
       <Modal
         isOpen={isAddModalOpen}
@@ -209,6 +386,25 @@ export default function SupplierManagementPage() {
           </div>
         </form>
       </Modal>
+
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        title="Delete Supplier"
+        message={
+          supplierToDelete
+            ? `Delete ${supplierToDelete.name}? This action cannot be undone.`
+            : 'Delete this supplier?'
+        }
+        confirmLabel={isDeleting ? 'Deleting...' : 'Delete Supplier'}
+        confirmVariant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDeleteSupplier}
+        onCancel={() => {
+          if (isDeleting) return;
+          setIsDeleteModalOpen(false);
+          setSupplierToDelete(null);
+        }}
+      />
     </div>
   );
 }
