@@ -33,7 +33,7 @@ const getSupplierColumns = (
         </div>
         <div className="flex items-center gap-2 text-xs text-neutral-700/60">
           <Mail size={12} />
-          {row.original.email}
+          {row.original.email || 'N/A'}
         </div>
       </div>
     ),
@@ -113,8 +113,11 @@ export default function SupplierManagementPage() {
     setIsSubmitting(true);
     try {
       const supplierRef = doc(collection(db, 'suppliers'));
+      const normalizedEmail = formData.email.trim();
+
       await setDoc(supplierRef, {
         ...formData,
+        email: normalizedEmail ? normalizedEmail : null,
         id: supplierRef.id,
         created_at: new Date().toISOString(),
       });
@@ -354,7 +357,6 @@ export default function SupplierManagementPage() {
             <div className="space-y-1.5">
               <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Email</label>
               <input 
-                required
                 type="email" 
                 value={formData.email}
                 onChange={(e) => setFormData({ ...formData, email: e.target.value })}

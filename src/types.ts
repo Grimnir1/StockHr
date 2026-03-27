@@ -21,7 +21,7 @@ export interface Supplier {
   name: string;
   contact_person: string;
   phone: string;
-  email: string;
+  email: string | null;
   address: string;
   notes: string;
 }
