@@ -1,4 +1,4 @@
-import React from 'react';
+import React from  'react';
 import { AlertCircle, X, ArrowRight } from 'lucide-react';
 import { cn } from '../../lib/utils';
 
@@ -22,7 +22,6 @@ export const AlertBanner: React.FC<AlertBannerProps> = ({ count, onDismiss }) =>
     sessionStorage.setItem('alert-banner-dismissed', 'true');
     onDismiss();
   };
-
   if (!isVisible || count === 0) return null;
 
   return (

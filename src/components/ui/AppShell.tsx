@@ -48,6 +48,8 @@ const navGroups: NavGroup[] = [
       { label: 'Products', href: '/products', icon: Package },
       { label: 'Stock Movements', href: '/movements', icon: ArrowLeftRight },
       { label: 'Categories', href: '/categories', icon: Tags },
+      { label: 'Suppliers', href: '/suppliers', icon: Truck, roles: ['admin', 'manager'] },
+
     ],
   },
   {
@@ -57,14 +59,15 @@ const navGroups: NavGroup[] = [
       { label: 'Alerts Centre', href: '/alerts', icon: Bell, roles: ['admin', 'manager'] },
     ],
   },
-  {
-    label: 'Reports',
-    items: [{ label: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'manager'] },
-            { label: 'Suppliers', href: '/suppliers', icon: Truck, roles: ['admin', 'manager'] },
+  // {
+  //   label: 'Reports',
+  //   items: [
+  //     { label: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'manager'] },
+  //           { label: 'Suppliers', href: '/suppliers', icon: Truck, roles: ['admin', 'manager'] },
 
-    ],
+  //   ],
     
-  },
+  // },
   {
     label: 'Profile',
     items: [
@@ -76,7 +79,7 @@ const navGroups: NavGroup[] = [
     items: [
       { label: 'Users', href: '/users', icon: Users, roles: ['admin'] },
       { label: 'Audit Trail', href: '/audit', icon: History, roles: ['admin'] },
-      { label: 'Settings', href: '/settings', icon: Settings, roles: ['admin'] },
+      // { label: 'Settings', href: '/settings', icon: Settings, roles: ['admin'] },
     ],
   },
 ];
