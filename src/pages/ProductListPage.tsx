@@ -226,7 +226,7 @@ export default function ProductListPage() {
               <Download size={18} />
               Export CSV
             </button>
-            <RoleGuard roles={['admin', 'manager']}>
+            {/* <RoleGuard roles={['admin', 'manager']}>
               <button 
                 onClick={() => setIsAddModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-all"
@@ -234,7 +234,7 @@ export default function ProductListPage() {
                 <Plus size={18} />
                 Add Product
               </button>
-            </RoleGuard>
+            </RoleGuard> */}
           </>
         }
       />

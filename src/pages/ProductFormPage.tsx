@@ -7,7 +7,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { FormField } from '../components/ui/FormField';
 import { toast } from 'react-hot-toast';
 import { db } from '../firebase';
-import { collection, doc, getDoc, setDoc, addDoc, onSnapshot, query, serverTimestamp } from 'firebase/firestore';
+import { collection, doc, getDoc, setDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { Category, Supplier } from '../types';
 
 const productSchema = z.object({
@@ -32,6 +32,7 @@ type ProductFormValues = z.infer<typeof productSchema>;
 export default function ProductFormPage({ id }: { id?: string }) {
   const isEdit = !!id;
   const [isLoading, setIsLoading] = React.useState(false);
+  const [isGeneratingSku, setIsGeneratingSku] = React.useState(false);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
   const [fetchingData, setFetchingData] = React.useState(isEdit);
@@ -51,6 +52,37 @@ export default function ProductFormPage({ id }: { id?: string }) {
       safety_stock: 10,
     },
   });
+
+  const formatSku = React.useCallback((value: number) => {
+    return `SKU-${String(value).padStart(6, '0')}`;
+  }, []);
+
+  const getSkuSequencePreview = React.useCallback(async () => {
+    const counterRef = doc(db, 'system', 'sku_counter');
+    const snap = await getDoc(counterRef);
+    const current = Number(snap.data()?.last_sku_number || 0);
+    return current + 1;
+  }, []);
+
+  const reserveNextSkuSequence = React.useCallback(async () => {
+    const counterRef = doc(db, 'system', 'sku_counter');
+    return runTransaction(db, async (transaction) => {
+      const snap = await transaction.get(counterRef);
+      const current = Number(snap.data()?.last_sku_number || 0);
+      const next = current + 1;
+
+      transaction.set(
+        counterRef,
+        {
+          last_sku_number: next,
+          updated_at: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+
+      return next;
+    });
+  }, []);
 
   React.useEffect(() => {
     // Fetch categories and suppliers
@@ -83,13 +115,27 @@ export default function ProductFormPage({ id }: { id?: string }) {
         }
       };
       fetchProduct();
+    } else {
+      const prepareSku = async () => {
+        setIsGeneratingSku(true);
+        try {
+          const previewSequence = await getSkuSequencePreview();
+          setValue('sku', formatSku(previewSequence));
+        } catch (error) {
+          console.error('Error generating SKU preview:', error);
+          toast.error('Failed to generate SKU');
+        } finally {
+          setIsGeneratingSku(false);
+        }
+      };
+      prepareSku();
     }
 
     return () => {
       unsubCats();
       unsubSups();
     };
-  }, [id, isEdit, reset]);
+  }, [formatSku, getSkuSequencePreview, id, isEdit, reset, setValue]);
 
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
@@ -112,9 +158,12 @@ export default function ProductFormPage({ id }: { id?: string }) {
         await setDoc(doc(db, 'products', id), productData, { merge: true });
         toast.success('Product updated successfully');
       } else {
+        const nextSkuSequence = await reserveNextSkuSequence();
+        const generatedSku = formatSku(nextSkuSequence);
         const productRef = doc(collection(db, 'products'));
         const newProduct = {
           ...productData,
+          sku: generatedSku,
           id: productRef.id,
           status: 'active',
           current_stock: data.initial_stock || 0,
@@ -167,8 +216,10 @@ export default function ProductFormPage({ id }: { id?: string }) {
             <FormField label="SKU" name="sku" error={errors.sku?.message} required>
               <input
                 {...register('sku')}
+                readOnly={!isEdit}
+                disabled={isGeneratingSku}
                 className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20 font-mono"
-                placeholder="e.g. WID-001"
+                placeholder={isGeneratingSku ? 'Generating SKU...' : 'SKU-000001'}
               />
             </FormField>
             <FormField label="Category" name="category_id" error={errors.category_id?.message} required className="md:col-span-1">

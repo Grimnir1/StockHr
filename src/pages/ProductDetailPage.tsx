@@ -3,13 +3,15 @@ import { ArrowLeft, Edit, Trash2, History, LineChart, Info, AlertCircle } from '
 import { PageHeader } from '../components/ui/PageHeader';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { RoleGuard } from '../components/ui/RoleGuard';
+import { ConfirmModal } from '../components/ui/Modal';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
 import { Product, StockMovement } from '../types';
 import { DataTable } from '../components/ui/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Line } from 'react-chartjs-2';
 import { db } from '../firebase';
-import { doc, onSnapshot, collection, query, where, orderBy, limit } from 'firebase/firestore';
+import { doc, onSnapshot, collection, query, where, orderBy, limit, getDocs, writeBatch } from 'firebase/firestore';
+import { toast } from 'react-hot-toast';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -72,6 +74,8 @@ export default function ProductDetailPage({ id }: { id: string }) {
   const [product, setProduct] = React.useState<Product | null>(null);
   const [movements, setMovements] = React.useState<StockMovement[]>([]);
   const [loading, setLoading] = React.useState(true);
+  const [isDeleting, setIsDeleting] = React.useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = React.useState(false);
 
   React.useEffect(() => {
     const unsubProduct = onSnapshot(doc(db, 'products', id), (docSnap) => {
@@ -97,6 +101,45 @@ export default function ProductDetailPage({ id }: { id: string }) {
       unsubMovements();
     };
   }, [id]);
+
+  const navigateTo = React.useCallback((nextPath: string) => {
+    window.history.pushState({}, '', nextPath);
+    window.dispatchEvent(new PopStateEvent('popstate'));
+  }, []);
+
+  const handleEditProduct = React.useCallback(() => {
+    navigateTo(`/products/${id}/edit`);
+  }, [id, navigateTo]);
+
+  const openDeleteModal = React.useCallback(() => {
+    if (!product || isDeleting) return;
+    setIsDeleteModalOpen(true);
+  }, [isDeleting, product]);
+
+  const handleDeleteProduct = React.useCallback(async () => {
+    if (!product || isDeleting) return;
+
+    setIsDeleting(true);
+    try {
+      const batch = writeBatch(db);
+      const movementSnapshot = await getDocs(query(collection(db, 'movements'), where('product_id', '==', id)));
+
+      movementSnapshot.forEach((movementDoc) => {
+        batch.delete(movementDoc.ref);
+      });
+      batch.delete(doc(db, 'products', id));
+
+      await batch.commit();
+      toast.success('Product deleted successfully');
+      setIsDeleteModalOpen(false);
+      navigateTo('/products');
+    } catch (error) {
+      console.error('Error deleting product:', error);
+      toast.error('Failed to delete product');
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [id, isDeleting, navigateTo, product]);
 
   const chartData = React.useMemo(() => {
     try {
@@ -173,13 +216,22 @@ export default function ProductDetailPage({ id }: { id: string }) {
         subtitle={product.sku}
         actions={
           <RoleGuard roles={['admin', 'manager']}>
-            <button className="flex items-center gap-2 px-4 py-2 bg-white border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 transition-colors">
+            <button
+              type="button"
+              onClick={handleEditProduct}
+              className="flex items-center gap-2 px-4 py-2 bg-white border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 transition-colors"
+            >
               <Edit size={18} />
               Edit Product
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 bg-danger/10 text-danger rounded-lg font-medium text-sm hover:bg-danger/20 transition-colors">
+            <button
+              type="button"
+              onClick={openDeleteModal}
+              disabled={isDeleting}
+              className="flex items-center gap-2 px-4 py-2 bg-danger/10 text-danger rounded-lg font-medium text-sm hover:bg-danger/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            >
               <Trash2 size={18} />
-              Delete
+              {isDeleting ? 'Deleting...' : 'Delete'}
             </button>
           </RoleGuard>
         }
@@ -333,6 +385,19 @@ export default function ProductDetailPage({ id }: { id: string }) {
           </button>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={isDeleteModalOpen}
+        title="Delete Product"
+        message={`Are you sure you want to delete ${product.name}? This will also remove its stock movement history.`}
+        confirmLabel={isDeleting ? 'Deleting...' : 'Delete Product'}
+        confirmVariant="danger"
+        isLoading={isDeleting}
+        onConfirm={handleDeleteProduct}
+        onCancel={() => {
+          if (!isDeleting) setIsDeleteModalOpen(false);
+        }}
+      />
     </div>
   );
 }
