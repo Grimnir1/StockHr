@@ -6,6 +6,9 @@ import { ArrowLeft, Save, Info } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { FormField } from '../components/ui/FormField';
 import { toast } from 'react-hot-toast';
+import { db } from '../firebase';
+import { collection, doc, getDoc, setDoc, addDoc, onSnapshot, query, serverTimestamp } from 'firebase/firestore';
+import { Category, Supplier } from '../types';
 
 const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
@@ -29,12 +32,16 @@ type ProductFormValues = z.infer<typeof productSchema>;
 export default function ProductFormPage({ id }: { id?: string }) {
   const isEdit = !!id;
   const [isLoading, setIsLoading] = React.useState(false);
+  const [categories, setCategories] = React.useState<Category[]>([]);
+  const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
+  const [fetchingData, setFetchingData] = React.useState(isEdit);
 
   const {
     register,
     handleSubmit,
     formState: { errors },
     setValue,
+    reset,
   } = useForm<ProductFormValues>({
     resolver: zodResolver(productSchema),
     defaultValues: {
@@ -45,18 +52,88 @@ export default function ProductFormPage({ id }: { id?: string }) {
     },
   });
 
+  React.useEffect(() => {
+    // Fetch categories and suppliers
+    const unsubCats = onSnapshot(collection(db, 'categories'), (snapshot) => {
+      setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Category)));
+    });
+    const unsubSups = onSnapshot(collection(db, 'suppliers'), (snapshot) => {
+      setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Supplier)));
+    });
+
+    if (isEdit && id) {
+      const fetchProduct = async () => {
+        try {
+          const docSnap = await getDoc(doc(db, 'products', id));
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            reset({
+              ...data,
+              initial_stock: data.current_stock, // For display if needed, though hidden in edit
+            } as any);
+          } else {
+            toast.error('Product not found');
+            window.location.href = '/products';
+          }
+        } catch (error) {
+          console.error('Error fetching product:', error);
+          toast.error('Failed to load product');
+        } finally {
+          setFetchingData(false);
+        }
+      };
+      fetchProduct();
+    }
+
+    return () => {
+      unsubCats();
+      unsubSups();
+    };
+  }, [id, isEdit, reset]);
+
   const onSubmit = async (data: ProductFormValues) => {
     setIsLoading(true);
     try {
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success(isEdit ? 'Product updated successfully' : 'Product created successfully');
+      const selectedCategory = categories.find(c => c.id === data.category_id);
+      const selectedSupplier = suppliers.find(s => s.id === data.supplier_id);
+
+      const productData = {
+        ...data,
+        category_name: selectedCategory?.name || '',
+        supplier_name: selectedSupplier?.name || '',
+        updated_at: new Date().toISOString(),
+        // DSS calculations (simplified for now)
+        adu: 0, 
+        velocity: 'moderate',
+        eoq: Math.sqrt((2 * (data.initial_stock || 0) * (data.cost_per_order || 500)) / (data.holding_cost || 50)) || 0,
+      };
+
+      if (isEdit && id) {
+        await setDoc(doc(db, 'products', id), productData, { merge: true });
+        toast.success('Product updated successfully');
+      } else {
+        const productRef = doc(collection(db, 'products'));
+        const newProduct = {
+          ...productData,
+          id: productRef.id,
+          status: 'active',
+          current_stock: data.initial_stock || 0,
+          created_at: new Date().toISOString(),
+        };
+        delete (newProduct as any).initial_stock;
+        await setDoc(productRef, newProduct);
+        toast.success('Product created successfully');
+      }
       window.location.href = '/products';
     } catch (error) {
+      console.error('Error saving product:', error);
       toast.error('Failed to save product');
     } finally {
       setIsLoading(false);
     }
   };
+
+  if (fetchingData) return <div className="p-8 text-center">Loading product data...</div>;
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
@@ -100,8 +177,9 @@ export default function ProductFormPage({ id }: { id?: string }) {
                 className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
                 <option value="">Select Category</option>
-                <option value="1">Hardware</option>
-                <option value="2">Mechanical</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
               </select>
             </FormField>
             <FormField label="Supplier" name="supplier_id" error={errors.supplier_id?.message} required className="md:col-span-1">
@@ -110,7 +188,9 @@ export default function ProductFormPage({ id }: { id?: string }) {
                 className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
               >
                 <option value="">Select Supplier</option>
-                <option value="1">Global Parts Corp</option>
+                {suppliers.map(s => (
+                  <option key={s.id} value={s.id}>{s.name}</option>
+                ))}
               </select>
             </FormField>
             <FormField label="Description" name="description" error={errors.description?.message} className="md:col-span-2">

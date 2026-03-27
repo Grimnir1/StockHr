@@ -8,6 +8,30 @@ import { Product, StockMovement } from '../types';
 import { DataTable } from '../components/ui/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Line } from 'react-chartjs-2';
+import { db } from '../firebase';
+import { doc, onSnapshot, collection, query, where, orderBy, limit } from 'firebase/firestore';
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler,
+} from 'chart.js';
+
+ChartJS.register(
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Legend,
+  Filler
+);
 
 const movementColumns: ColumnDef<StockMovement>[] = [
   {
@@ -45,61 +69,91 @@ const movementColumns: ColumnDef<StockMovement>[] = [
 ];
 
 export default function ProductDetailPage({ id }: { id: string }) {
-  // Mock product data
-  const product: Product = {
-    id: parseInt(id),
-    sku: 'WID-001',
-    name: 'Industrial Widget A',
-    description: 'High-precision widget for industrial applications. Built with durable materials for long-lasting performance in harsh environments.',
-    category_id: 1,
-    supplier_id: 1,
-    unit_price: 12500,
-    current_stock: 45,
-    reorder_point: 50,
-    rop: 50,
-    eoq: 120,
-    adu: 2.5,
-    velocity: 'moderate',
-    lead_time_days: 7,
-    safety_stock: 10,
-    cost_per_order: 500,
-    holding_cost: 50,
-    storage_location: 'Aisle 4, Shelf B',
-    unit_of_measure: 'units',
-    status: 'active',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    category: { id: 1, name: 'Hardware', color: '#2563EB', description: '' },
-    supplier: { id: 1, name: 'Global Parts Corp', contact_person: 'Jane Smith', phone: '+123456789', email: 'jane@globalparts.com', address: '123 Industrial Way', notes: '' },
-  };
+  const [product, setProduct] = React.useState<Product | null>(null);
+  const [movements, setMovements] = React.useState<StockMovement[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
-  const mockMovements: StockMovement[] = [
-    {
-      id: 1,
-      product_id: product.id,
-      product_name: product.name,
-      type: 'in',
-      quantity: 50,
-      notes: 'Monthly restock',
-      reference_number: 'PO-9921',
-      movement_date: new Date().toISOString(),
-      performed_by_name: 'Philip Ojedokun',
-    },
-  ];
+  React.useEffect(() => {
+    const unsubProduct = onSnapshot(doc(db, 'products', id), (docSnap) => {
+      if (docSnap.exists()) {
+        setProduct({ id: docSnap.id, ...docSnap.data() } as any as Product);
+      }
+      setLoading(false);
+    });
 
-  const chartData = {
-    labels: ['Mar 19', 'Mar 20', 'Mar 21', 'Mar 22', 'Mar 23', 'Mar 24', 'Mar 25'],
-    datasets: [
-      {
-        label: 'Stock Level',
-        data: [40, 45, 42, 38, 50, 48, 45],
-        borderColor: '#2563EB',
-        backgroundColor: '#2563EB20',
-        fill: true,
-        tension: 0.4,
-      },
-    ],
-  };
+    const qMovements = query(
+      collection(db, 'movements'),
+      where('product_id', '==', id),
+      orderBy('movement_date', 'desc'),
+      limit(10)
+    );
+
+    const unsubMovements = onSnapshot(qMovements, (snapshot) => {
+      setMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as StockMovement)));
+    });
+
+    return () => {
+      unsubProduct();
+      unsubMovements();
+    };
+  }, [id]);
+
+  const chartData = React.useMemo(() => {
+    try {
+      const last7Days = Array.from({ length: 7 }, (_, i) => {
+        const d = new Date();
+        d.setDate(d.getDate() - (6 - i));
+        return d.toISOString().split('T')[0];
+      });
+
+      const movementCounts: Record<string, number> = {};
+      movements.forEach(m => {
+        if (!m.movement_date) return;
+        
+        let dateStr = '';
+        if (typeof m.movement_date === 'string') {
+          dateStr = m.movement_date;
+        } else if (m.movement_date && typeof (m.movement_date as any).toDate === 'function') {
+          dateStr = (m.movement_date as any).toDate().toISOString();
+        } else if (m.movement_date && (m.movement_date as any).seconds) {
+          dateStr = new Date((m.movement_date as any).seconds * 1000).toISOString();
+        }
+        
+        if (!dateStr) return;
+        const date = dateStr.split('T')[0];
+        if (last7Days.includes(date)) {
+          const qty = Number(m.quantity) || 0;
+          // For "Stock Level" chart, we might want to show net movement or just volume
+          // Here we'll show net movement (in - out)
+          const netQty = m.type === 'out' ? -qty : qty;
+          movementCounts[date] = (movementCounts[date] || 0) + netQty;
+        }
+      });
+
+      return {
+        labels: last7Days.map(d => {
+          const date = new Date(d);
+          return isNaN(date.getTime()) ? d : date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        }),
+        datasets: [
+          {
+            label: 'Net Movement',
+            data: last7Days.map(d => movementCounts[d] || 0),
+            borderColor: '#2563EB',
+            backgroundColor: '#2563EB20',
+            fill: true,
+            tension: 0.4,
+          },
+        ],
+      };
+    } catch (error) {
+      console.error('Error calculating chart data:', error);
+      return { labels: [], datasets: [] };
+    }
+  }, [movements]);
+
+  if (loading) return <div className="p-8 text-center">Loading product details...</div>;
+  if (!product) return <div className="p-8 text-center">Product not found.</div>;
 
   return (
     <div className="space-y-8">
@@ -139,21 +193,22 @@ export default function ProductDetailPage({ id }: { id: string }) {
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center gap-3">
                 <StatusBadge status={product.velocity} />
-                <span
-                  className="px-2 py-0.5 rounded text-[10px] font-bold"
-                  style={{ backgroundColor: `${product.category?.color}20`, color: product.category?.color }}
-                >
-                  {product.category?.name}
-                </span>
+                {product.category_name && (
+                  <span
+                    className="px-2 py-0.5 rounded text-[10px] font-bold bg-primary/10 text-primary"
+                  >
+                    {product.category_name}
+                  </span>
+                )}
               </div>
-              <div className={cn('text-2xl font-bold', product.current_stock <= product.reorder_point ? 'text-danger' : 'text-success')}>
-                {product.current_stock} <span className="text-sm font-medium text-neutral-700/40">{product.unit_of_measure}</span>
+              <div className={cn('text-2xl font-bold', (product.current_stock || 0) <= (product.reorder_point || 0) ? 'text-danger' : 'text-success')}>
+                {product.current_stock || 0} <span className="text-sm font-medium text-neutral-700/40">{product.unit_of_measure}</span>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <p className="text-[10px] font-bold text-neutral-700/40 uppercase tracking-widest mb-1">Supplier</p>
-                <p className="text-sm font-medium">{product.supplier?.name}</p>
+                <p className="text-sm font-medium">{product.supplier_name || 'N/A'}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold text-neutral-700/40 uppercase tracking-widest mb-1">Storage Location</p>
@@ -179,15 +234,15 @@ export default function ProductDetailPage({ id }: { id: string }) {
               <div className="space-y-4">
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-neutral-700/60">Reorder Point (ROP)</span>
-                  <span className="text-sm font-bold">{product.reorder_point} units</span>
+                  <span className="text-sm font-bold">{product.reorder_point || 0} units</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-neutral-700/60">Economic Order Qty (EOQ)</span>
-                  <span className="text-sm font-bold">{product.eoq} units</span>
+                  <span className="text-sm font-bold">{Math.round(product.eoq || 0)} units</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-xs text-neutral-700/60">Avg Daily Usage (ADU)</span>
-                  <span className="text-sm font-bold">{product.adu} units/day</span>
+                  <span className="text-sm font-bold">{(product.adu || 0).toFixed(2)} units/day</span>
                 </div>
               </div>
             </div>
@@ -202,10 +257,20 @@ export default function ProductDetailPage({ id }: { id: string }) {
                 <div>
                   <div className="flex justify-between items-center mb-2">
                     <span className="text-xs text-neutral-700/60">Days Until Stockout</span>
-                    <span className="text-sm font-bold">18 Days</span>
+                    <span className="text-sm font-bold">
+                      {(product.adu || 0) > 0 ? Math.floor((product.current_stock || 0) / (product.adu || 1)) : '∞'} Days
+                    </span>
                   </div>
                   <div className="w-full h-2 bg-neutral-100 rounded-full overflow-hidden">
-                    <div className="h-full bg-warning w-[60%]" />
+                    <div 
+                      className={cn(
+                        "h-full transition-all duration-500",
+                        (product.current_stock || 0) <= (product.reorder_point || 0) ? "bg-danger" : "bg-warning"
+                      )} 
+                      style={{ 
+                        width: `${Math.max(0, Math.min(100, ((product.current_stock || 0) / ((product.reorder_point || 1) * 2)) * 100)) || 0}%` 
+                      }} 
+                    />
                   </div>
                 </div>
                 <p className="text-[10px] text-neutral-700/40 italic">Based on current ADU and stock levels.</p>
@@ -242,7 +307,7 @@ export default function ProductDetailPage({ id }: { id: string }) {
             </div>
           </div>
           <div className="space-y-4">
-            {mockMovements.map((m) => (
+            {movements.map((m) => (
               <div key={m.id} className="card p-4">
                 <div className="flex justify-between items-start mb-2">
                   <StatusBadge status={m.type === 'in' ? 'fast' : m.type === 'out' ? 'slow' : 'moderate'} />
@@ -259,6 +324,9 @@ export default function ProductDetailPage({ id }: { id: string }) {
                 </div>
               </div>
             ))}
+            {movements.length === 0 && (
+              <p className="text-center py-8 text-xs text-neutral-700/40">No recent movements.</p>
+            )}
           </div>
           <button className="w-full py-2 text-xs font-bold text-primary hover:bg-primary/5 rounded-lg transition-colors">
             View All History

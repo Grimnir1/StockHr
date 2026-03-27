@@ -4,7 +4,10 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { DataTable } from '../components/ui/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Category } from '../types';
-import { MOCK_CATEGORIES } from '../lib/mockData';
+import { db } from '../firebase';
+import { collection, query, onSnapshot, doc, setDoc } from 'firebase/firestore';
+import { Modal } from '../components/ui/Modal';
+import { toast } from 'react-hot-toast';
 
 const categoryColumns: ColumnDef<Category>[] = [
   {
@@ -52,13 +55,57 @@ const categoryColumns: ColumnDef<Category>[] = [
 ];
 
 export default function CategoryManagementPage() {
+  const [categories, setCategories] = React.useState<Category[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+  const [formData, setFormData] = React.useState({
+    name: '',
+    description: '',
+    color: '#2563EB',
+  });
+
+  React.useEffect(() => {
+    const q = query(collection(db, 'categories'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Category)));
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const handleAddCategory = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const categoryRef = doc(collection(db, 'categories'));
+      await setDoc(categoryRef, {
+        ...formData,
+        id: categoryRef.id,
+        product_count: 0,
+        created_at: new Date().toISOString(),
+      });
+      toast.success('Category added successfully!');
+      setIsAddModalOpen(false);
+      setFormData({ name: '', description: '', color: '#2563EB' });
+    } catch (error) {
+      console.error('Error adding category:', error);
+      toast.error('Failed to add category');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Category Management"
         subtitle="Organize your products into logical groups for better tracking."
         actions={
-          <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-all">
+          <button 
+            onClick={() => setIsAddModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-all"
+          >
             <Plus size={18} />
             Add Category
           </button>
@@ -76,7 +123,65 @@ export default function CategoryManagementPage() {
         </div>
       </div>
 
-      <DataTable columns={categoryColumns} data={MOCK_CATEGORIES} />
+      <DataTable columns={categoryColumns} data={categories} />
+
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        title="Add New Category"
+        footer={
+          <>
+            <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-md">Cancel</button>
+            <button 
+              form="add-category-form"
+              disabled={isSubmitting}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50"
+            >
+              {isSubmitting ? 'Adding...' : 'Add Category'}
+            </button>
+          </>
+        }
+      >
+        <form id="add-category-form" onSubmit={handleAddCategory} className="space-y-4">
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Category Name</label>
+            <input 
+              required
+              type="text" 
+              value={formData.name}
+              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm" 
+              placeholder="Electronics" 
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Description</label>
+            <textarea 
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm min-h-[80px]" 
+              placeholder="Electronic components and parts..." 
+            />
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Color Code</label>
+            <div className="flex gap-2">
+              <input 
+                type="color" 
+                value={formData.color}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                className="w-10 h-10 p-0 border-none bg-transparent cursor-pointer" 
+              />
+              <input 
+                type="text" 
+                value={formData.color}
+                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
+                className="flex-1 px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm font-mono" 
+              />
+            </div>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }

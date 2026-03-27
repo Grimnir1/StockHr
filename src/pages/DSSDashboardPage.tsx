@@ -7,6 +7,8 @@ import { ColumnDef } from '@tanstack/react-table';
 import { Product } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { Bar } from 'react-chartjs-2';
+import { db } from '../firebase';
+import { collection, query, onSnapshot, where } from 'firebase/firestore';
 
 import {
   Chart as ChartJS,
@@ -49,7 +51,7 @@ const reorderColumns: ColumnDef<Product>[] = [
   },
   {
     header: 'Supplier',
-    accessorKey: 'supplier.name',
+    accessorKey: 'supplier_name',
   },
   {
     header: 'Est. Cost',
@@ -86,7 +88,7 @@ const velocityColumns: ColumnDef<Product>[] = [
   },
   {
     header: 'Category',
-    accessorKey: 'category.name',
+    accessorKey: 'category_name',
   },
   {
     header: 'ADU',
@@ -110,44 +112,31 @@ const velocityColumns: ColumnDef<Product>[] = [
   },
 ];
 
-const mockProducts: Product[] = [
-  {
-    id: 1,
-    sku: 'WID-001',
-    name: 'Industrial Widget A',
-    description: '',
-    category_id: 1,
-    supplier_id: 1,
-    unit_price: 12500,
-    current_stock: 45,
-    reorder_point: 50,
-    rop: 50,
-    eoq: 120,
-    adu: 2.5,
-    velocity: 'moderate',
-    lead_time_days: 7,
-    safety_stock: 10,
-    cost_per_order: 500,
-    holding_cost: 50,
-    storage_location: '',
-    unit_of_measure: 'units',
-    status: 'active',
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-    category: { id: 1, name: 'Hardware', color: '#2563EB', description: '' },
-    supplier: { id: 1, name: 'Global Parts Corp', contact_person: '', phone: '', email: '', address: '', notes: '' },
-  },
-];
-
 export default function DSSDashboardPage() {
   const [activeTab, setActiveTab] = React.useState<'overview' | 'reorder' | 'velocity'>('overview');
+  const [products, setProducts] = React.useState<Product[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const q = query(collection(db, 'products'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Product)));
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const reorderItems = products.filter(p => p.current_stock <= p.reorder_point);
+  const outOfStockItems = products.filter(p => p.current_stock === 0);
+  const slowMovingItems = products.filter(p => p.velocity === 'slow');
+  const totalReorderValue = reorderItems.reduce((acc, p) => acc + (p.eoq * p.unit_price), 0);
 
   const fastestMovingData = {
-    labels: ['Widget A', 'Gear B', 'Bolt C', 'Nut D', 'Screw E'],
+    labels: products.sort((a, b) => b.adu - a.adu).slice(0, 5).map(p => p.name),
     datasets: [
       {
         label: 'ADU (Units/Day)',
-        data: [12, 10, 8, 7, 5],
+        data: products.sort((a, b) => b.adu - a.adu).slice(0, 5).map(p => p.adu),
         backgroundColor: '#16A34A',
         borderRadius: 4,
       },
@@ -155,16 +144,18 @@ export default function DSSDashboardPage() {
   };
 
   const slowestMovingData = {
-    labels: ['Pump X', 'Valve Y', 'Tank Z', 'Pipe W', 'Joint V'],
+    labels: products.sort((a, b) => a.adu - b.adu).slice(0, 5).map(p => p.name),
     datasets: [
       {
-        label: 'Days Since Last Movement',
-        data: [85, 72, 68, 60, 45],
+        label: 'ADU (Units/Day)',
+        data: products.sort((a, b) => a.adu - b.adu).slice(0, 5).map(p => p.adu),
         backgroundColor: '#DC2626',
         borderRadius: 4,
       },
     ],
   };
+
+  if (loading) return <div className="p-8 text-center">Loading DSS Analysis...</div>;
 
   return (
     <div className="space-y-8">
@@ -205,7 +196,7 @@ export default function DSSDashboardPage() {
                 <AlertTriangle size={18} className="text-danger" />
                 <p className="text-[10px] font-bold text-danger uppercase tracking-widest">Below ROP</p>
               </div>
-              <h3 className="text-2xl font-bold">12 Items</h3>
+              <h3 className="text-2xl font-bold">{reorderItems.length} Items</h3>
               <p className="text-xs text-danger/60 mt-1">Require immediate reorder</p>
             </div>
             <div className="card bg-neutral-100 border-neutral-200">
@@ -213,7 +204,7 @@ export default function DSSDashboardPage() {
                 <Package size={18} className="text-neutral-700/40" />
                 <p className="text-[10px] font-bold text-neutral-700/40 uppercase tracking-widest">Zero Stock</p>
               </div>
-              <h3 className="text-2xl font-bold">4 Items</h3>
+              <h3 className="text-2xl font-bold">{outOfStockItems.length} Items</h3>
               <p className="text-xs text-neutral-700/40 mt-1">Currently out of stock</p>
             </div>
             <div className="card bg-warning/5 border-warning/10">
@@ -221,15 +212,15 @@ export default function DSSDashboardPage() {
                 <TrendingDown size={18} className="text-warning" />
                 <p className="text-[10px] font-bold text-warning uppercase tracking-widest">Slow Moving</p>
               </div>
-              <h3 className="text-2xl font-bold">156 Items</h3>
-              <p className="text-xs text-warning/60 mt-1">{'>'}60 days no movement</p>
+              <h3 className="text-2xl font-bold">{slowMovingItems.length} Items</h3>
+              <p className="text-xs text-warning/60 mt-1">Low velocity products</p>
             </div>
             <div className="card bg-primary/5 border-primary/10">
               <div className="flex items-center gap-3 mb-2">
                 <DollarSign size={18} className="text-primary" />
                 <p className="text-[10px] font-bold text-primary uppercase tracking-widest">Reorder Value</p>
               </div>
-              <h3 className="text-2xl font-bold">{formatCurrency(1250000)}</h3>
+              <h3 className="text-2xl font-bold">{formatCurrency(totalReorderValue)}</h3>
               <p className="text-xs text-primary/60 mt-1">Est. cost for all ROP items</p>
             </div>
           </div>
@@ -237,7 +228,7 @@ export default function DSSDashboardPage() {
           {/* Charts */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="card">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-700/60 mb-6">Top 10 Fastest Moving Items</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-700/60 mb-6">Top 5 Fastest Moving Items</h3>
               <div className="h-[300px]">
                 <Bar
                   data={fastestMovingData}
@@ -252,7 +243,7 @@ export default function DSSDashboardPage() {
               </div>
             </div>
             <div className="card">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-700/60 mb-6">Top 10 Slowest Moving Items</h3>
+              <h3 className="text-xs font-bold uppercase tracking-wider text-neutral-700/60 mb-6">Top 5 Slowest Moving Items</h3>
               <div className="h-[300px]">
                 <Bar
                   data={slowestMovingData}
@@ -272,7 +263,7 @@ export default function DSSDashboardPage() {
 
       {activeTab === 'reorder' && (
         <div className="animate-in fade-in duration-500">
-          <DataTable columns={reorderColumns} data={mockProducts} />
+          <DataTable columns={reorderColumns} data={reorderItems} />
         </div>
       )}
 
@@ -284,7 +275,7 @@ export default function DSSDashboardPage() {
             <button className="px-4 py-2 bg-white border border-neutral-100 text-xs font-bold rounded-lg hover:bg-neutral-50">Moderate</button>
             <button className="px-4 py-2 bg-white border border-neutral-100 text-xs font-bold rounded-lg hover:bg-neutral-50">Slow</button>
           </div>
-          <DataTable columns={velocityColumns} data={mockProducts} />
+          <DataTable columns={velocityColumns} data={products} />
         </div>
       )}
     </div>

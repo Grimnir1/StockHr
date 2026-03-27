@@ -18,7 +18,7 @@ const statusConfig: Record<Status, { label: string; classes: string }> = {
 };
 
 export const StatusBadge: React.FC<StatusBadgeProps> = ({ status, className }) => {
-  const config = statusConfig[status];
+  const config = statusConfig[status] || statusConfig['moderate'];
   return (
     <span
       className={cn(

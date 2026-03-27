@@ -1,0 +1,189 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Document ID: {userId} (UID from Firebase Auth)
+    // Fields:
+    //   - id: string (required) - UID
+    //   - name: string (required, size < 100) - Full name
+    //   - email: string (required, format: email) - Email address
+    //   - role: string (required, enum: ['admin', 'manager', 'staff']) - User role
+    //   - status: string (required, enum: ['active', 'inactive']) - Account status
+    //   - last_login_at: string (optional, format: ISO8601) - Last login timestamp
+    //
+    // Collection: products
+    // Document ID: {productId}
+    // Fields:
+    //   - id: string (required)
+    //   - sku: string (required)
+    //   - name: string (required)
+    //   - description: string (optional)
+    //   - category_id: string (required)
+    //   - category_name: string (optional)
+    //   - supplier_id: string (required)
+    //   - supplier_name: string (optional)
+    //   - current_stock: number (required)
+    //   - reorder_point: number (required)
+    //   - unit_price: number (required)
+    //   - unit_of_measure: string (required)
+    //   - velocity: string (required, enum: ['fast', 'moderate', 'slow'])
+    //   - created_at: string (required)
+    //   - updated_at: string (required)
+    //
+    // Collection: movements
+    // Document ID: {movementId}
+    // Fields:
+    //   - id: string (required)
+    //   - product_id: string (required)
+    //   - product_name: string (required)
+    //   - type: string (required, enum: ['in', 'out', 'adjustment'])
+    //   - quantity: number (required)
+    //   - reference_number: string (required)
+    //   - performed_by_name: string (required)
+    //   - movement_date: string (required)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function checkRole(roles) {
+      let isBootstrapAdmin = request.auth.token.email == "philipojedokun942@gmail.com";
+      return isAuthenticated() && (
+        isBootstrapAdmin || (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role in roles
+        )
+      );
+    }
+
+    function isAdmin() {
+      return checkRole(['admin']);
+    }
+
+    function isManager() {
+      return checkRole(['admin', 'manager']);
+    }
+
+    function isStaff() {
+      return checkRole(['admin', 'manager', 'staff']);
+    }
+
+    function isValidEmail(email) {
+      return email is string && email.matches("^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$");
+    }
+
+    function isValidDateString(dateStr) {
+      return dateStr is string && dateStr.matches("^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}.*Z?$");
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function hasRequiredFields(fields) {
+      return request.resource.data.keys().hasAll(fields);
+    }
+
+    // ===============================================================
+    // Domain Validators
+    // ===============================================================
+
+    function isValidUser(data, userId) {
+      let required = ['id', 'name', 'email', 'role', 'status'];
+      let optional = ['last_login_at', 'created_at', 'updated_at', 'password'];
+      return hasRequiredFields(required) &&
+             hasOnlyAllowedFields(required.concat(optional)) &&
+             data.id == userId &&
+             data.name is string && data.name.size() > 0 && data.name.size() < 100 &&
+             isValidEmail(data.email) &&
+             data.role in ['admin', 'manager', 'staff'] &&
+             data.status in ['active', 'inactive'] &&
+             (!('created_at' in data) || isValidDateString(data.created_at)) &&
+             (!('password' in data) || (data.password is string && data.password.size() < 100));
+    }
+
+    function isValidProduct(data) {
+      let required = ['id', 'sku', 'name', 'category_id', 'supplier_id', 'current_stock', 'reorder_point', 'unit_price', 'status', 'created_at', 'updated_at'];
+      let optional = [
+        'description', 'category_name', 'supplier_name', 'storage_location', 
+        'adu', 'eoq', 'lead_time_days', 'safety_stock', 'cost_per_order', 
+        'holding_cost', 'rop', 'unit_of_measure', 'velocity'
+      ];
+      return hasRequiredFields(required) &&
+             hasOnlyAllowedFields(required.concat(optional)) &&
+             data.sku is string && data.sku.size() < 50 &&
+             data.name is string && data.name.size() < 200 &&
+             data.current_stock is number &&
+             data.reorder_point is number &&
+             data.unit_price is number &&
+             isValidDateString(data.created_at) &&
+             isValidDateString(data.updated_at);
+    }
+
+    function isValidStockMovement(data) {
+      let required = ['id', 'product_id', 'product_name', 'type', 'quantity', 'reference_number', 'performed_by_name', 'movement_date'];
+      let optional = ['notes'];
+      return hasRequiredFields(required) &&
+             hasOnlyAllowedFields(required.concat(optional)) &&
+             data.type in ['in', 'out', 'adjustment'] &&
+             data.quantity is number &&
+             isValidDateString(data.movement_date);
+    }
+
+    function isValidCategory(data) {
+      let required = ['id', 'name', 'color'];
+      let optional = ['description', 'product_count', 'created_at'];
+      return hasRequiredFields(required) &&
+             hasOnlyAllowedFields(required.concat(optional)) &&
+             data.name is string && data.name.size() > 0 &&
+             data.color is string && data.color.matches("^#[0-9a-fA-F]{6}$");
+    }
+
+    function isValidSupplier(data) {
+      let required = ['id', 'name', 'contact_person', 'phone', 'email', 'address', 'created_at'];
+      let optional = ['notes'];
+      return hasRequiredFields(required) &&
+             hasOnlyAllowedFields(required.concat(optional)) &&
+             data.name is string && data.name.size() > 0 &&
+             isValidEmail(data.email) &&
+             isValidDateString(data.created_at);
+    }
+
+    function isValidAlert(data) {
+      let required = ['id', 'type', 'message', 'product_id', 'product_name', 'severity', 'is_acknowledged', 'created_at'];
+      return hasRequiredFields(required) &&
+             hasOnlyAllowedFields(required) &&
+             data.type in ['low_stock', 'slow_moving', 'out_of_stock'] &&
+             data.severity in ['warning', 'critical'] &&
+             data.is_acknowledged is bool &&
+             isValidDateString(data.created_at);
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    // INSECURE: Allowing read and write for everyone to support the "reset to password" demo login.
+    // This is necessary because backdoor-logged-in users don't have a Firebase Auth token,
+    // so standard isAuthenticated() and isOwner() checks will fail.
+    // In a production app, these rules MUST be significantly hardened.
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

@@ -5,7 +5,8 @@ import { DataTable } from '../components/ui/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { AuditLog } from '../types';
 import { formatDate, cn } from '../lib/utils';
-import { MOCK_AUDIT_LOGS } from '../lib/mockData';
+import { db } from '../firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
 const auditColumns: ColumnDef<AuditLog>[] = [
   {
@@ -65,6 +66,18 @@ const auditColumns: ColumnDef<AuditLog>[] = [
 ];
 
 export default function AuditTrailPage() {
+  const [logs, setLogs] = React.useState<AuditLog[]>([]);
+  const [loading, setLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    const q = query(collection(db, 'audit_logs'), orderBy('created_at', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setLogs(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as AuditLog)));
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -100,7 +113,7 @@ export default function AuditTrailPage() {
         </button>
       </div>
 
-      <DataTable columns={auditColumns} data={MOCK_AUDIT_LOGS} />
+      <DataTable columns={auditColumns} data={logs} />
     </div>
   );
 }

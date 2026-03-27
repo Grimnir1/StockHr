@@ -1,14 +1,15 @@
 export interface User {
-  id: number;
+  id: string;
   name: string;
   email: string;
   role: 'admin' | 'manager' | 'staff';
   status: 'active' | 'inactive';
   last_login_at: string | null;
+  password?: string;
 }
 
 export interface Category {
-  id: number;
+  id: string;
   name: string;
   description: string;
   color: string;
@@ -16,7 +17,7 @@ export interface Category {
 }
 
 export interface Supplier {
-  id: number;
+  id: string;
   name: string;
   contact_person: string;
   phone: string;
@@ -26,12 +27,12 @@ export interface Supplier {
 }
 
 export interface Product {
-  id: number;
+  id: string;
   sku: string;
   name: string;
   description: string;
-  category_id: number;
-  supplier_id: number;
+  category_id: string;
+  supplier_id: string;
   unit_price: number;
   current_stock: number;
   reorder_point: number;
@@ -50,11 +51,13 @@ export interface Product {
   updated_at: string;
   category?: Category;
   supplier?: Supplier;
+  category_name?: string;
+  supplier_name?: string;
 }
 
 export interface StockMovement {
-  id: number;
-  product_id: number;
+  id: string;
+  product_id: string;
   product_name: string;
   type: 'in' | 'out' | 'adjustment';
   quantity: number;
@@ -65,10 +68,10 @@ export interface StockMovement {
 }
 
 export interface Alert {
-  id: number;
+  id: string;
   type: 'low_stock' | 'slow_moving' | 'out_of_stock';
   message: string;
-  product_id: number;
+  product_id: string;
   product_name: string;
   severity: 'critical' | 'warning';
   is_acknowledged: boolean;
@@ -76,11 +79,11 @@ export interface Alert {
 }
 
 export interface AuditLog {
-  id: number;
+  id: string;
   user_name: string;
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN';
   entity_type: string;
-  entity_id: number;
+  entity_id: string;
   details: string;
   ip_address: string;
   created_at: string;

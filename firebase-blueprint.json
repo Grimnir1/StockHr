@@ -1,0 +1,156 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "System user with role-based access control.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique user ID (UID from Firebase Auth)." },
+        "name": { "type": "string", "description": "Full name of the user." },
+        "email": { "type": "string", "format": "email", "description": "Email address of the user." },
+        "role": { "type": "string", "enum": ["admin", "manager", "staff"], "description": "User role for RBAC." },
+        "status": { "type": "string", "enum": ["active", "inactive"], "description": "Account status." },
+        "last_login_at": { "type": "string", "format": "date-time", "description": "Timestamp of last login." }
+      },
+      "required": ["id", "name", "email", "role", "status"]
+    },
+    "Category": {
+      "title": "Category",
+      "description": "Product category for organization.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique category ID." },
+        "name": { "type": "string", "description": "Category name." },
+        "description": { "type": "string", "description": "Category description." },
+        "color": { "type": "string", "description": "Hex color code for UI." },
+        "product_count": { "type": "number", "description": "Number of products in this category." }
+      },
+      "required": ["id", "name", "color"]
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Network of parts and material providers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique supplier ID." },
+        "name": { "type": "string", "description": "Company name." },
+        "contact_person": { "type": "string", "description": "Primary contact person." },
+        "phone": { "type": "string", "description": "Contact phone number." },
+        "email": { "type": "string", "format": "email", "description": "Contact email address." },
+        "address": { "type": "string", "description": "Physical address." },
+        "notes": { "type": "string", "description": "Additional notes." }
+      },
+      "required": ["id", "name", "contact_person", "phone", "email", "address"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Inventory item tracked by the system.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique product ID." },
+        "sku": { "type": "string", "description": "Stock Keeping Unit." },
+        "name": { "type": "string", "description": "Product name." },
+        "description": { "type": "string", "description": "Product description." },
+        "category_id": { "type": "string", "description": "Reference to Category ID." },
+        "category_name": { "type": "string", "description": "Denormalized category name." },
+        "supplier_id": { "type": "string", "description": "Reference to Supplier ID." },
+        "supplier_name": { "type": "string", "description": "Denormalized supplier name." },
+        "current_stock": { "type": "number", "description": "Current quantity in stock." },
+        "reorder_point": { "type": "number", "description": "Stock level that triggers a reorder alert." },
+        "unit_price": { "type": "number", "description": "Price per unit." },
+        "unit_of_measure": { "type": "string", "description": "Unit of measure (e.g., units, kg)." },
+        "storage_location": { "type": "string", "description": "Physical location in warehouse." },
+        "adu": { "type": "number", "description": "Average Daily Usage." },
+        "velocity": { "type": "string", "enum": ["fast", "moderate", "slow"], "description": "Stock movement velocity." },
+        "eoq": { "type": "number", "description": "Economic Order Quantity." },
+        "lead_time_days": { "type": "number", "description": "Lead time in days." },
+        "safety_stock": { "type": "number", "description": "Safety stock level." },
+        "cost_per_order": { "type": "number", "description": "Cost to place an order." },
+        "holding_cost": { "type": "number", "description": "Annual cost to hold one unit." },
+        "status": { "type": "string", "enum": ["active", "inactive"], "description": "Product status." },
+        "created_at": { "type": "string", "format": "date-time", "description": "Timestamp of creation." },
+        "updated_at": { "type": "string", "format": "date-time", "description": "Timestamp of last update." }
+      },
+      "required": ["id", "sku", "name", "category_id", "supplier_id", "current_stock", "reorder_point", "unit_price", "unit_of_measure", "velocity", "created_at", "updated_at"]
+    },
+    "StockMovement": {
+      "title": "StockMovement",
+      "description": "Record of stock entering or leaving inventory.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique movement ID." },
+        "product_id": { "type": "string", "description": "Reference to Product ID." },
+        "product_name": { "type": "string", "description": "Name of the product." },
+        "type": { "type": "string", "enum": ["in", "out", "adjustment"], "description": "Type of movement." },
+        "quantity": { "type": "number", "description": "Quantity moved." },
+        "notes": { "type": "string", "description": "Movement notes." },
+        "reference_number": { "type": "string", "description": "External reference number (e.g., PO #)." },
+        "performed_by_name": { "type": "string", "description": "Name of the person who performed the movement." },
+        "movement_date": { "type": "string", "format": "date-time", "description": "Timestamp of movement." }
+      },
+      "required": ["id", "product_id", "product_name", "type", "quantity", "performed_by_name", "movement_date"]
+    },
+    "Alert": {
+      "title": "Alert",
+      "description": "System-generated notification for stock issues.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique alert ID." },
+        "type": { "type": "string", "enum": ["low_stock", "slow_moving", "out_of_stock"], "description": "Alert type." },
+        "message": { "type": "string", "description": "Alert message." },
+        "product_id": { "type": "string", "description": "Reference to Product ID." },
+        "product_name": { "type": "string", "description": "Name of the product." },
+        "severity": { "type": "string", "enum": ["warning", "critical"], "description": "Alert severity." },
+        "is_acknowledged": { "type": "boolean", "description": "Whether the alert has been acknowledged." },
+        "created_at": { "type": "string", "format": "date-time", "description": "Timestamp of alert." }
+      },
+      "required": ["id", "type", "message", "product_id", "product_name", "severity", "is_acknowledged", "created_at"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable record of system events.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique log ID." },
+        "user_name": { "type": "string", "description": "Name of the user who performed the action." },
+        "action": { "type": "string", "enum": ["CREATE", "UPDATE", "DELETE", "LOGIN"], "description": "Action type." },
+        "entity_type": { "type": "string", "description": "Type of entity affected." },
+        "entity_id": { "type": "string", "description": "ID of the entity affected." },
+        "details": { "type": "string", "description": "Detailed description of the action." },
+        "ip_address": { "type": "string", "description": "IP address of the user." },
+        "created_at": { "type": "string", "format": "date-time", "description": "Timestamp of log." }
+      },
+      "required": ["id", "user_name", "action", "entity_type", "entity_id", "details", "ip_address", "created_at"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profiles and roles."
+    },
+    "/categories/{categoryId}": {
+      "schema": "Category",
+      "description": "Product categories."
+    },
+    "/suppliers/{supplierId}": {
+      "schema": "Supplier",
+      "description": "Product suppliers."
+    },
+    "/products/{productId}": {
+      "schema": "Product",
+      "description": "Inventory products."
+    },
+    "/movements/{movementId}": {
+      "schema": "StockMovement",
+      "description": "Stock movement history."
+    },
+    "/alerts/{alertId}": {
+      "schema": "Alert",
+      "description": "System alerts."
+    },
+    "/audit_logs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit trail."
+    }
+  }
+}

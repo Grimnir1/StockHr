@@ -7,9 +7,9 @@ import { ColumnDef } from '@tanstack/react-table';
 import { StockMovement } from '../types';
 import { formatDate, cn } from '../lib/utils';
 import { RoleGuard } from '../components/ui/RoleGuard';
-import { MOCK_MOVEMENTS } from '../lib/mockData';
-import { StockMovementModal } from '../components/ui/StockMovementModal';
-import { ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { StockMovementModal } from '../components/StockMovementModal';
 
 const movementColumns: ColumnDef<StockMovement>[] = [
   {
@@ -21,10 +21,13 @@ const movementColumns: ColumnDef<StockMovement>[] = [
     header: 'Product',
     accessorKey: 'product_name',
     cell: ({ row }) => (
-      <div className="max-w-[200px]">
-        <p className="font-medium truncate">{row.original.product_name}</p>
+      <a 
+        href={`/products/${row.original.product_id}`}
+        className="block max-w-[200px] group"
+      >
+        <p className="font-medium truncate group-hover:text-primary transition-colors">{row.original.product_name}</p>
         <p className="text-[10px] text-neutral-700/40 font-mono">ID: {row.original.product_id}</p>
-      </div>
+      </a>
     ),
   },
   {
@@ -58,18 +61,18 @@ const movementColumns: ColumnDef<StockMovement>[] = [
 ];
 
 export default function StockMovementsPage() {
-  const [isMovementModalOpen, setIsMovementModalOpen] = React.useState(false);
-  const [movementType, setMovementType] = React.useState<'in' | 'out'>('in');
-  const [movements, setMovements] = React.useState(MOCK_MOVEMENTS);
+  const [movements, setMovements] = React.useState<StockMovement[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [isModalOpen, setIsModalOpen] = React.useState(false);
 
-  const handleRecordMovement = (type: 'in' | 'out') => {
-    setMovementType(type);
-    setIsMovementModalOpen(true);
-  };
-
-  const handleMovementSuccess = (newMovement: StockMovement) => {
-    setMovements([newMovement, ...movements]);
-  };
+  React.useEffect(() => {
+    const q = query(collection(db, 'movements'), orderBy('movement_date', 'desc'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as StockMovement)));
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -77,27 +80,25 @@ export default function StockMovementsPage() {
         title="Stock Movements"
         subtitle="Complete log of all inventory ins, outs, and adjustments."
         actions={
-          <div className="flex gap-2">
+          <>
             <button className="flex items-center gap-2 px-4 py-2 bg-white border border-neutral-100 rounded-lg font-medium text-sm hover:bg-neutral-50 transition-colors">
               <Download size={18} />
               Export Log
             </button>
             <button 
-              onClick={() => handleRecordMovement('in')}
-              className="flex items-center gap-2 px-4 py-2 bg-success text-white rounded-lg font-medium text-sm hover:bg-success/90 transition-all"
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-all"
             >
-              <ArrowDownLeft size={18} />
-              Stock In
+              <Plus size={18} />
+              Record Movement
             </button>
-            <button 
-              onClick={() => handleRecordMovement('out')}
-              className="flex items-center gap-2 px-4 py-2 bg-danger text-white rounded-lg font-medium text-sm hover:bg-danger/90 transition-all"
-            >
-              <ArrowUpRight size={18} />
-              Stock Out
-            </button>
-          </div>
+          </>
         }
+      />
+
+      <StockMovementModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
       />
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
@@ -126,13 +127,6 @@ export default function StockMovementsPage() {
       </div>
 
       <DataTable columns={movementColumns} data={movements} />
-
-      <StockMovementModal
-        isOpen={isMovementModalOpen}
-        onClose={() => setIsMovementModalOpen(false)}
-        type={movementType}
-        onSuccess={handleMovementSuccess}
-      />
     </div>
   );
 }

@@ -57,23 +57,44 @@ const navGroups: NavGroup[] = [
   },
   {
     label: 'Reports',
-    items: [{ label: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'manager'] }],
+    items: [{ label: 'Reports', href: '/reports', icon: FileText, roles: ['admin', 'manager'] },
+            { label: 'Suppliers', href: '/suppliers', icon: Truck, roles: ['admin', 'manager'] },
+
+    ],
+    
+  },
+  {
+    label: 'Profile',
+    items: [
+      { label: 'Profile', href: '/profile', icon: Users,},
+    ],
   },
   {
     label: 'Admin',
     items: [
       { label: 'Users', href: '/users', icon: Users, roles: ['admin'] },
-      { label: 'Suppliers', href: '/suppliers', icon: Truck, roles: ['admin'] },
       { label: 'Audit Trail', href: '/audit', icon: History, roles: ['admin'] },
       { label: 'Settings', href: '/settings', icon: Settings, roles: ['admin'] },
     ],
   },
 ];
 
+import { auth, signOut } from '../../firebase';
+
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout } = useAuthStore();
   const { sidebarCollapsed, toggleSidebar } = useUIStore();
   const [searchQuery, setSearchQuery] = React.useState('');
+
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      logout();
+    } catch (error) {
+      console.error('Logout error:', error);
+      logout(); // Still logout locally
+    }
+  };
 
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : '';
 
@@ -133,21 +154,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         </nav>
 
         <div className="p-4 border-t border-white/10 space-y-4">
-          <div className="flex items-center gap-3 overflow-hidden">
-            <div className="w-8 h-8 rounded-full bg-white/10 flex items-center justify-center shrink-0">
-              <UserIcon size={16} />
-            </div>
-            {!sidebarCollapsed && (
-              <div className="min-w-0">
-                <p className="text-xs font-bold truncate">{user?.name}</p>
-                <p className="text-[10px] text-white/40 uppercase font-bold tracking-wider">
-                  {user?.role}
-                </p>
-              </div>
-            )}
-          </div>
+          
           <button
-            onClick={logout}
+            onClick={handleLogout}
             className={cn(
               'w-full flex items-center gap-3 px-3 py-2 rounded-lg text-white/70 hover:bg-danger/10 hover:text-danger transition-colors',
               sidebarCollapsed && 'justify-center'

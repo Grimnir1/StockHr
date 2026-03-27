@@ -3,12 +3,24 @@ import { Bell, AlertTriangle, Package, Clock, CheckCircle, Filter } from 'lucide
 import { PageHeader } from '../components/ui/PageHeader';
 import { Alert } from '../types';
 import { formatDate, cn } from '../lib/utils';
-import { MOCK_ALERTS } from '../lib/mockData';
+import { db } from '../firebase';
+import { collection, query, onSnapshot, where } from 'firebase/firestore';
 
 export default function AlertsCentrePage() {
   const [activeTab, setActiveTab] = React.useState<'all' | 'low' | 'slow' | 'out'>('all');
+  const [alerts, setAlerts] = React.useState<Alert[]>([]);
+  const [loading, setLoading] = React.useState(true);
 
-  const filteredAlerts = MOCK_ALERTS.filter(alert => {
+  React.useEffect(() => {
+    const q = query(collection(db, 'alerts'), where('status', '==', 'active'));
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      setAlerts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Alert)));
+      setLoading(false);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  const filteredAlerts = alerts.filter(alert => {
     if (activeTab === 'all') return true;
     if (activeTab === 'low') return alert.type === 'low_stock';
     if (activeTab === 'slow') return alert.type === 'slow_moving';
@@ -17,10 +29,10 @@ export default function AlertsCentrePage() {
   });
 
   const counts = {
-    all: MOCK_ALERTS.length,
-    low: MOCK_ALERTS.filter(a => a.type === 'low_stock').length,
-    slow: MOCK_ALERTS.filter(a => a.type === 'slow_moving').length,
-    out: MOCK_ALERTS.filter(a => a.type === 'out_of_stock').length,
+    all: alerts.length,
+    low: alerts.filter(a => a.type === 'low_stock').length,
+    slow: alerts.filter(a => a.type === 'slow_moving').length,
+    out: alerts.filter(a => a.type === 'out_of_stock').length,
   };
 
   return (

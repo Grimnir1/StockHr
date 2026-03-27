@@ -13,11 +13,12 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { DataTable } from '../components/ui/DataTable';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ColumnDef } from '@tanstack/react-table';
-import { StockMovement } from '../types';
+import { StockMovement, Product, Alert } from '../types';
 import { formatDate, cn } from '../lib/utils';
 import { Line, Doughnut } from 'react-chartjs-2';
-import { MOCK_MOVEMENTS, MOCK_PRODUCTS, MOCK_ALERTS } from '../lib/mockData';
-import { StockMovementModal } from '../components/ui/StockMovementModal';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { StockMovementModal } from '../components/StockMovementModal';
 
 import {
   Chart as ChartJS,
@@ -51,6 +52,14 @@ const movementColumns: ColumnDef<StockMovement>[] = [
   {
     header: 'Product',
     accessorKey: 'product_name',
+    cell: ({ row }) => (
+      <a 
+        href={`/products/${row.original.product_id}`}
+        className="font-medium hover:text-primary transition-colors"
+      >
+        {row.original.product_name}
+      </a>
+    ),
   },
   {
     header: 'Type',
@@ -82,42 +91,96 @@ const movementColumns: ColumnDef<StockMovement>[] = [
 ];
 
 export default function DashboardPage() {
+  const [products, setProducts] = React.useState<Product[]>([]);
+  const [movements, setMovements] = React.useState<StockMovement[]>([]);
+  const [alerts, setAlerts] = React.useState<Alert[]>([]);
+  const [loading, setLoading] = React.useState(true);
   const [isMovementModalOpen, setIsMovementModalOpen] = React.useState(false);
   const [movementType, setMovementType] = React.useState<'in' | 'out'>('in');
-  const [movements, setMovements] = React.useState(MOCK_MOVEMENTS);
 
-  const handleRecordMovement = (type: 'in' | 'out') => {
+  const openMovementModal = (type: 'in' | 'out') => {
     setMovementType(type);
     setIsMovementModalOpen(true);
   };
 
-  const handleMovementSuccess = (newMovement: StockMovement) => {
-    setMovements([newMovement, ...movements]);
-  };
+  React.useEffect(() => {
+    const qProducts = query(collection(db, 'products'));
+    const qMovements = query(collection(db, 'movements'), orderBy('movement_date', 'desc'), limit(10));
+    const qAlerts = query(collection(db, 'alerts'), limit(20));
 
-  const chartData = {
-    labels: ['Mar 19', 'Mar 20', 'Mar 21', 'Mar 22', 'Mar 23', 'Mar 24', 'Mar 25'],
-    datasets: [
-      {
-        label: 'Stock Consumption',
-        data: [65, 59, 80, 81, 56, 55, 40],
-        fill: false,
-        borderColor: '#2563EB',
-        tension: 0.4,
-      },
-    ],
-  };
+    const unsubProducts = onSnapshot(qProducts, (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Product)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
+    });
 
-  const doughnutData = {
-    labels: ['Electronics', 'Mechanical', 'Hardware', 'Safety'],
-    datasets: [
-      {
-        data: [300, 50, 100, 80],
-        backgroundColor: ['#2563EB', '#16A34A', '#D97706', '#DC2626'],
-        borderWidth: 0,
-      },
-    ],
-  };
+    const unsubMovements = onSnapshot(qMovements, (snapshot) => {
+      setMovements(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as StockMovement)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'movements');
+    });
+
+    const unsubAlerts = onSnapshot(qAlerts, (snapshot) => {
+      setAlerts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Alert)));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'alerts');
+    });
+
+    return () => {
+      unsubProducts();
+      unsubMovements();
+      unsubAlerts();
+    };
+  }, []);
+
+  const chartData = React.useMemo(() => {
+    const last7Days = Array.from({ length: 7 }, (_, i) => {
+      const d = new Date();
+      d.setDate(d.getDate() - (6 - i));
+      return d.toISOString().split('T')[0];
+    });
+
+    const movementCounts: Record<string, number> = {};
+    movements.forEach(m => {
+      const date = m.movement_date.split('T')[0];
+      if (last7Days.includes(date)) {
+        movementCounts[date] = (movementCounts[date] || 0) + m.quantity;
+      }
+    });
+
+    return {
+      labels: last7Days.map(d => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
+      datasets: [
+        {
+          label: 'Stock Consumption',
+          data: last7Days.map(d => movementCounts[d] || 0),
+          fill: false,
+          borderColor: '#2563EB',
+          tension: 0.4,
+        },
+      ],
+    };
+  }, [movements]);
+
+  const doughnutData = React.useMemo(() => {
+    const categoryCounts: Record<string, number> = {};
+    products.forEach(p => {
+      const catName = p.category_name || 'Uncategorized';
+      categoryCounts[catName] = (categoryCounts[catName] || 0) + 1;
+    });
+
+    return {
+      labels: Object.keys(categoryCounts),
+      datasets: [
+        {
+          data: Object.values(categoryCounts),
+          backgroundColor: ['#2563EB', '#16A34A', '#D97706', '#DC2626', '#7C3AED', '#DB2777'],
+          borderWidth: 0,
+        },
+      ],
+    };
+  }, [products]);
 
   return (
     <div className="space-y-8">
@@ -127,9 +190,8 @@ export default function DashboardPage() {
         actions={
           <div className="flex gap-2">
             <a 
-              href="/products/new"
-              className="btn-primary flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-all"
-            >
+            href="/products/new"
+            className="btn-primary flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm">
               <Plus size={18} />
               New Product
             </a>
@@ -139,9 +201,9 @@ export default function DashboardPage() {
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <KPICard title="Total Products" value={MOCK_PRODUCTS.length} icon={Box} colour="blue" />
-        <KPICard title="Low Stock Alerts" value={MOCK_ALERTS.length} icon={AlertTriangle} colour="red" trend={-5} />
-        <KPICard title="Stock Movements Today" value={MOCK_MOVEMENTS.length} icon={ArrowLeftRight} colour="green" />
+        <KPICard title="Total Products" value={products.length} icon={Box} colour="blue" />
+        <KPICard title="Low Stock Alerts" value={alerts.length} icon={AlertTriangle} colour="red" trend={-5} />
+        <KPICard title="Stock Movements Today" value={movements.length} icon={ArrowLeftRight} colour="green" />
         <KPICard title="Slow-Moving Items" value="156" icon={TrendingDown} colour="amber" />
       </div>
 
@@ -202,14 +264,14 @@ export default function DashboardPage() {
       {/* Quick Action Buttons (Floating) */}
       <div className="fixed bottom-8 right-8 flex flex-col gap-3 z-40">
         <button 
-          onClick={() => handleRecordMovement('in')}
+          onClick={() => openMovementModal('in')}
           className="flex items-center gap-2 px-4 py-3 bg-success text-white rounded-full shadow-lg hover:scale-105 transition-transform font-bold text-sm"
         >
           <ArrowDownLeft size={18} />
           Record Stock In
         </button>
         <button 
-          onClick={() => handleRecordMovement('out')}
+          onClick={() => openMovementModal('out')}
           className="flex items-center gap-2 px-4 py-3 bg-danger text-white rounded-full shadow-lg hover:scale-105 transition-transform font-bold text-sm"
         >
           <ArrowUpRight size={18} />
@@ -217,11 +279,10 @@ export default function DashboardPage() {
         </button>
       </div>
 
-      <StockMovementModal
-        isOpen={isMovementModalOpen}
-        onClose={() => setIsMovementModalOpen(false)}
-        type={movementType}
-        onSuccess={handleMovementSuccess}
+      <StockMovementModal 
+        isOpen={isMovementModalOpen} 
+        onClose={() => setIsMovementModalOpen(false)} 
+        defaultType={movementType} 
       />
     </div>
   );

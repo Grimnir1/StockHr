@@ -4,12 +4,15 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { DataTable } from '../components/ui/DataTable';
 import { StatusBadge } from '../components/ui/StatusBadge';
 import { ColumnDef } from '@tanstack/react-table';
-import { Product } from '../types';
+import { Product, Category } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { RoleGuard } from '../components/ui/RoleGuard';
-import { MOCK_PRODUCTS, MOCK_CATEGORIES } from '../lib/mockData';
+import { Modal } from '../components/ui/Modal';
+import { db, handleFirestoreError, OperationType } from '../firebase';
+import { addDoc, collection, query, onSnapshot, serverTimestamp, doc, setDoc } from 'firebase/firestore';
+import { toast } from 'react-hot-toast';
 
-const productColumns: ColumnDef<Product>[] = [
+const getProductColumns = (categories: Category[]): ColumnDef<Product>[] => [
   {
     header: 'SKU',
     accessorKey: 'sku',
@@ -19,17 +22,21 @@ const productColumns: ColumnDef<Product>[] = [
     header: 'Product Name',
     accessorKey: 'name',
     cell: ({ row }) => (
-      <div className="max-w-[200px]">
-        <p className="font-medium truncate">{row.original.name}</p>
+      <a 
+        href={`/products/${row.original.id}`}
+        onClick={(e) => e.stopPropagation()}
+        className="block max-w-[200px] group"
+      >
+        <p className="font-medium truncate group-hover:text-primary transition-colors">{row.original.name}</p>
         <p className="text-[10px] text-neutral-700/40 truncate">{row.original.description}</p>
-      </div>
+      </a>
     ),
   },
   {
     header: 'Category',
-    accessorKey: 'category.name',
+    accessorKey: 'category_id',
     cell: ({ row }) => {
-      const category = MOCK_CATEGORIES.find(c => c.id === row.original.category_id);
+      const category = categories.find(c => c.id === row.original.category_id);
       return (
         <span
           className="px-2 py-0.5 rounded text-[10px] font-bold"
@@ -69,9 +76,14 @@ const productColumns: ColumnDef<Product>[] = [
     cell: ({ row }) => (
       <RoleGuard roles={['admin', 'manager']}>
         <div className="flex items-center gap-2">
-          <button className="p-1.5 hover:bg-neutral-100 rounded text-primary transition-colors">
+          <a 
+            href={`/products/${row.original.id}`}
+            onClick={(e) => e.stopPropagation()}
+            className="p-1.5 hover:bg-neutral-100 rounded text-primary transition-colors"
+            title="View Details"
+          >
             <Search size={14} />
-          </button>
+          </a>
         </div>
       </RoleGuard>
     ),
@@ -80,6 +92,128 @@ const productColumns: ColumnDef<Product>[] = [
 
 export default function ProductListPage() {
   const [search, setSearch] = React.useState('');
+  const [products, setProducts] = React.useState<Product[]>([]);
+  const [categories, setCategories] = React.useState<Category[]>([]);
+  const [suppliers, setSuppliers] = React.useState<any[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
+
+  // Form state
+  const [formData, setFormData] = React.useState({
+    sku: '',
+    name: '',
+    description: '',
+    category_id: '',
+    supplier_id: '',
+    current_stock: 0,
+    reorder_point: 0,
+    unit_price: 0,
+    unit_of_measure: 'units',
+    velocity: 'moderate' as const,
+    storage_location: '',
+    lead_time_days: 7,
+    cost_per_order: 50,
+    holding_cost: 5,
+  });
+
+  React.useEffect(() => {
+    const qProducts = query(collection(db, 'products'));
+    const qCategories = query(collection(db, 'categories'));
+
+    const unsubProducts = onSnapshot(qProducts, (snapshot) => {
+      setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Product)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'products');
+    });
+
+    const unsubCategories = onSnapshot(qCategories, (snapshot) => {
+      setCategories(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Category)));
+      setLoading(false);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'categories');
+    });
+
+    const unsubSuppliers = onSnapshot(query(collection(db, 'suppliers')), (snapshot) => {
+      setSuppliers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any)));
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'suppliers');
+    });
+
+    return () => {
+      unsubProducts();
+      unsubCategories();
+      unsubSuppliers();
+    };
+  }, []);
+
+  const filteredProducts = products.filter(p => 
+    p.name.toLowerCase().includes(search.toLowerCase()) ||
+    p.sku.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const columns = React.useMemo(() => getProductColumns(categories), [categories]);
+
+  const handleAddProduct = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const selectedCategory = categories.find(c => c.id === formData.category_id);
+      const selectedSupplier = suppliers.find(s => s.id === formData.supplier_id);
+      
+      // Calculate basic DSS metrics for the new product
+      const adu = 0; // Initial ADU is 0
+      const rop = Number(formData.reorder_point);
+      const annualDemand = 0; // Placeholder for annual demand
+      const costPerOrder = Number(formData.cost_per_order) || 50;
+      const holdingCost = Number(formData.holding_cost) || 5;
+      
+      const eoq = holdingCost > 0 ? Math.sqrt((2 * costPerOrder * annualDemand) / holdingCost) : 0;
+
+      const productRef = doc(collection(db, 'products'));
+      await setDoc(productRef, {
+        ...formData,
+        id: productRef.id,
+        category_name: selectedCategory?.name || '',
+        supplier_name: selectedSupplier?.name || '',
+        current_stock: Number(formData.current_stock),
+        reorder_point: Number(formData.reorder_point),
+        unit_price: Number(formData.unit_price),
+        lead_time_days: Number(formData.lead_time_days),
+        cost_per_order: costPerOrder,
+        holding_cost: holdingCost,
+        adu,
+        rop,
+        eoq,
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+      toast.success('Product added successfully!');
+      setIsAddModalOpen(false);
+      setFormData({
+        sku: '',
+        name: '',
+        description: '',
+        category_id: '',
+        supplier_id: '',
+        current_stock: 0,
+        reorder_point: 0,
+        unit_price: 0,
+        unit_of_measure: 'units',
+        velocity: 'moderate',
+        storage_location: '',
+        lead_time_days: 7,
+        cost_per_order: 50,
+        holding_cost: 5,
+      });
+    } catch (error) {
+      console.error('Error adding product:', error);
+      toast.error('Failed to add product');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -93,7 +227,10 @@ export default function ProductListPage() {
               Export CSV
             </button>
             <RoleGuard roles={['admin', 'manager']}>
-              <button className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-all">
+              <button 
+                onClick={() => setIsAddModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg font-medium text-sm hover:bg-primary/90 transition-all"
+              >
                 <Plus size={18} />
                 Add Product
               </button>
@@ -129,7 +266,144 @@ export default function ProductListPage() {
         </div>
       </div>
 
-      <DataTable columns={productColumns} data={MOCK_PRODUCTS} onRowClick={(p) => window.location.href = `/products/${p.id}`} />
+      <DataTable 
+        columns={columns} 
+        data={filteredProducts} 
+        onRowClick={(p: Product) => {
+          window.history.pushState({}, '', `/products/${p.id}`);
+          window.dispatchEvent(new PopStateEvent('popstate'));
+        }} 
+      />
+
+      <Modal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        title="Add New Product"
+        footer={
+          <>
+            <button onClick={() => setIsAddModalOpen(false)} className="px-4 py-2 text-sm font-medium text-neutral-700 hover:bg-neutral-100 rounded-md">Cancel</button>
+            <button 
+              form="add-product-form"
+              disabled={isSubmitting}
+              className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md disabled:opacity-50"
+            >
+              {isSubmitting ? 'Adding...' : 'Add Product'}
+            </button>
+          </>
+        }
+      >
+        <form id="add-product-form" onSubmit={handleAddProduct} className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">SKU</label>
+              <input 
+                required
+                type="text" 
+                value={formData.sku}
+                onChange={(e) => setFormData({ ...formData, sku: e.target.value })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm" 
+                placeholder="SKU-001" 
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Product Name</label>
+              <input 
+                required
+                type="text" 
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm" 
+                placeholder="Industrial Bearing" 
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Description</label>
+            <textarea 
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm min-h-[80px]" 
+              placeholder="High-precision steel bearing..." 
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Category</label>
+              <select 
+                required
+                value={formData.category_id}
+                onChange={(e) => setFormData({ ...formData, category_id: e.target.value })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm"
+              >
+                <option value="">Select Category</option>
+                {categories.map(c => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Storage Location</label>
+              <input 
+                required
+                type="text" 
+                value={formData.storage_location}
+                onChange={(e) => setFormData({ ...formData, storage_location: e.target.value })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm" 
+                placeholder="Aisle 4, Shelf B" 
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Unit Price</label>
+              <input 
+                required
+                type="number" 
+                step="0.01"
+                value={formData.unit_price}
+                onChange={(e) => setFormData({ ...formData, unit_price: Number(e.target.value) })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm" 
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Unit of Measure</label>
+              <select 
+                value={formData.unit_of_measure}
+                onChange={(e) => setFormData({ ...formData, unit_of_measure: e.target.value })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm"
+              >
+                <option value="units">Units</option>
+                <option value="kg">Kilograms (kg)</option>
+                <option value="liters">Liters (L)</option>
+                <option value="meters">Meters (m)</option>
+                <option value="boxes">Boxes</option>
+              </select>
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Current Stock</label>
+              <input 
+                required
+                type="number" 
+                value={formData.current_stock}
+                onChange={(e) => setFormData({ ...formData, current_stock: Number(e.target.value) })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm" 
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Reorder Point</label>
+              <input 
+                required
+                type="number" 
+                value={formData.reorder_point}
+                onChange={(e) => setFormData({ ...formData, reorder_point: Number(e.target.value) })}
+                className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm" 
+              />
+            </div>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 }
