@@ -17,7 +17,7 @@ import { StockMovement, Product } from '../types';
 import { formatDate, cn } from '../lib/utils';
 import { Line, Doughnut } from 'react-chartjs-2';
 import { db, handleFirestoreError, OperationType } from '../firebase';
-import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+import { collection, query, orderBy, limit, onSnapshot, where } from 'firebase/firestore';
 import { StockMovementModal } from '../components/StockMovementModal';
 
 import {
@@ -93,6 +93,7 @@ const movementColumns: ColumnDef<StockMovement>[] = [
 export default function DashboardPage() {
   const [products, setProducts] = React.useState<Product[]>([]);
   const [movements, setMovements] = React.useState<StockMovement[]>([]);
+  const [stockMovementsTodayCount, setStockMovementsTodayCount] = React.useState(0);
   const [loading, setLoading] = React.useState(true);
   const [isMovementModalOpen, setIsMovementModalOpen] = React.useState(false);
   const [movementType, setMovementType] = React.useState<'in' | 'out'>('in');
@@ -105,6 +106,17 @@ export default function DashboardPage() {
   React.useEffect(() => {
     const qProducts = query(collection(db, 'products'));
     const qMovements = query(collection(db, 'movements'), orderBy('movement_date', 'desc'), limit(10));
+
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const startOfTomorrow = new Date(startOfToday);
+    startOfTomorrow.setDate(startOfTomorrow.getDate() + 1);
+
+    const qMovementsToday = query(
+      collection(db, 'movements'),
+      where('movement_date', '>=', startOfToday.toISOString()),
+      where('movement_date', '<', startOfTomorrow.toISOString())
+    );
 
     const unsubProducts = onSnapshot(qProducts, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Product)));
@@ -121,9 +133,16 @@ export default function DashboardPage() {
       setLoading(false);
     });
 
+    const unsubMovementsToday = onSnapshot(qMovementsToday, (snapshot) => {
+      setStockMovementsTodayCount(snapshot.size);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, 'movements_today');
+    });
+
     return () => {
       unsubProducts();
       unsubMovements();
+      unsubMovementsToday();
     };
   }, []);
 
@@ -208,7 +227,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         <KPICard title="Total Products" value={products.length} icon={Box} colour="blue" />
         <KPICard title="Low Stock Alerts" value={lowStockAlertsCount} icon={AlertTriangle} colour="red" trend={-5} />
-        <KPICard title="Stock Movements Today" value={movements.length} icon={ArrowLeftRight} colour="green" />
+        <KPICard title="Stock Movements Today" value={stockMovementsTodayCount} icon={ArrowLeftRight} colour="green" />
         <KPICard title="Slow-Moving Items" value={slowMovingItemsCount} icon={TrendingDown} colour="amber" />
       </div>
 
