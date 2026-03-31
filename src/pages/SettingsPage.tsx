@@ -3,8 +3,11 @@ import { Settings as SettingsIcon, Bell, DollarSign, Shield, Save, RefreshCw } f
 import { PageHeader } from '../components/ui/PageHeader';
 import { FormField } from '../components/ui/FormField';
 import { toast } from 'react-hot-toast';
+import { useAuthStore } from '../stores/auth.store';
+import { logAuditEvent } from '../lib/audit';
 
 export default function SettingsPage() {
+  const user = useAuthStore((state) => state.user);
   const [isLoading, setIsLoading] = React.useState(false);
 
   const handleSave = async (e: React.FormEvent) => {
@@ -12,6 +15,13 @@ export default function SettingsPage() {
     setIsLoading(true);
     try {
       await new Promise((resolve) => setTimeout(resolve, 1500));
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'UPDATE',
+        entityType: 'Settings',
+        entityId: 'system',
+        details: 'Saved system settings from settings page',
+      });
       toast.success('System settings updated successfully');
     } catch (error) {
       toast.error('Failed to update settings');

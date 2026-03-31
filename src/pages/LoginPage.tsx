@@ -7,7 +7,8 @@ import { useAuthStore } from '../stores/auth.store';
 import { toast } from 'react-hot-toast';
 import { auth, signInWithEmailAndPassword, createUserWithEmailAndPassword, db } from '../firebase';
 import { updateProfile, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp, addDoc, collection } from 'firebase/firestore';
+import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { logAuditEvent } from '../lib/audit';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
@@ -19,14 +20,12 @@ type LoginFormValues = z.infer<typeof loginSchema>;
 
 async function logLoginAudit(user: { id: string; name?: string; email?: string }) {
   try {
-    await addDoc(collection(db, 'audit_logs'), {
-      user_id: user.id,
+    await logAuditEvent({
+      userId: user.id,
       action: 'LOGIN',
-      entity_type: 'Auth',
-      entity_id: user.id,
+      entityType: 'Auth',
+      entityId: user.id,
       details: `User signed in (${user.email || 'no-email'})`,
-      ip_address: '-',
-      created_at: new Date().toISOString(),
     });
   } catch (error) {
     console.error('Failed to write LOGIN audit log:', error);

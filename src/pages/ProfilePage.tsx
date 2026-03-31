@@ -9,6 +9,7 @@ import { toast } from 'react-hot-toast';
 import { db, auth } from '../firebase';
 import { doc, updateDoc } from 'firebase/firestore';
 import { updatePassword } from 'firebase/auth';
+import { logAuditEvent } from '../lib/audit';
 
 export default function ProfilePage() {
   const { user, setUser, token } = useAuthStore();
@@ -52,6 +53,13 @@ export default function ProfilePage() {
       };
 
       await updateDoc(userRef, updatedData);
+      await logAuditEvent({
+        userId: user.id,
+        action: 'UPDATE',
+        entityType: 'Profile',
+        entityId: user.id,
+        details: 'Updated profile details',
+      });
       
       // Update local store
       setUser({ ...user, ...updatedData }, token || '');
@@ -96,6 +104,13 @@ export default function ProfilePage() {
           updated_at: new Date().toISOString()
         };
         await updateDoc(userRef, updatedData);
+        await logAuditEvent({
+          userId: user.id,
+          action: 'UPDATE',
+          entityType: 'UserCredential',
+          entityId: user.id,
+          details: 'Updated account password',
+        });
         
         // Update local store
         setUser({ ...user, ...updatedData }, token || '');

@@ -3,6 +3,8 @@ import { FileText, Download, Calendar as CalendarIcon, Filter, Loader2 } from 'l
 import { PageHeader } from '../components/ui/PageHeader';
 import { toast } from 'react-hot-toast';
 import { cn } from '../lib/utils';
+import { useAuthStore } from '../stores/auth.store';
+import { logAuditEvent } from '../lib/audit';
 
 interface ReportType {
   id: string;
@@ -45,12 +47,20 @@ const reportTypes: ReportType[] = [
 ];
 
 export default function ReportsPage() {
+  const user = useAuthStore((state) => state.user);
   const [generating, setGenerating] = React.useState<string | null>(null);
 
   const handleGenerate = async (reportId: string, format: 'PDF' | 'CSV') => {
     setGenerating(`${reportId}-${format}`);
     try {
       await new Promise((resolve) => setTimeout(resolve, 2000));
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'CREATE',
+        entityType: 'Report',
+        entityId: reportId,
+        details: `Generated ${format} report for ${reportId}`,
+      });
       toast.success(`${format} report generated successfully!`);
       // In a real app: download blob
     } catch (error) {

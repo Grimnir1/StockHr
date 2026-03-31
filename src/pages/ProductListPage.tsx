@@ -11,6 +11,8 @@ import { Modal } from '../components/ui/Modal';
 import { db, handleFirestoreError, OperationType } from '../firebase';
 import { addDoc, collection, query, onSnapshot, serverTimestamp, doc, setDoc } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
+import { useAuthStore } from '../stores/auth.store';
+import { logAuditEvent } from '../lib/audit';
 
 const getProductColumns = (categories: Category[]): ColumnDef<Product>[] => [
   {
@@ -91,6 +93,7 @@ const getProductColumns = (categories: Category[]): ColumnDef<Product>[] => [
 ];
 
 export default function ProductListPage() {
+  const user = useAuthStore((state) => state.user);
   const [search, setSearch] = React.useState('');
   const [selectedCategory, setSelectedCategory] = React.useState('');
   const [selectedStatus, setSelectedStatus] = React.useState('');
@@ -208,6 +211,13 @@ export default function ProductListPage() {
         status: 'active',
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
+      });
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'CREATE',
+        entityType: 'Product',
+        entityId: productRef.id,
+        details: `Created product ${formData.name} (${formData.sku}) from list page modal`,
       });
       toast.success('Product added successfully!');
       setIsAddModalOpen(false);

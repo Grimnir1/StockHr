@@ -12,6 +12,8 @@ import { Line } from 'react-chartjs-2';
 import { db } from '../firebase';
 import { doc, onSnapshot, collection, query, where, orderBy, limit, getDocs, writeBatch } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
+import { useAuthStore } from '../stores/auth.store';
+import { logAuditEvent } from '../lib/audit';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -71,6 +73,7 @@ const movementColumns: ColumnDef<StockMovement>[] = [
 ];
 
 export default function ProductDetailPage({ id }: { id: string }) {
+  const user = useAuthStore((state) => state.user);
   const [product, setProduct] = React.useState<Product | null>(null);
   const [supplier, setSupplier] = React.useState<Supplier | null>(null);
   const [movements, setMovements] = React.useState<StockMovement[]>([]);
@@ -148,6 +151,13 @@ export default function ProductDetailPage({ id }: { id: string }) {
       batch.delete(doc(db, 'products', id));
 
       await batch.commit();
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'DELETE',
+        entityType: 'Product',
+        entityId: id,
+        details: `Deleted product ${product.name} (${product.sku}) and related movement history`,
+      });
       toast.success('Product deleted successfully');
       setIsDeleteModalOpen(false);
       navigateTo('/products');
@@ -157,7 +167,7 @@ export default function ProductDetailPage({ id }: { id: string }) {
     } finally {
       setIsDeleting(false);
     }
-  }, [id, isDeleting, navigateTo, product]);
+  }, [id, isDeleting, navigateTo, product, user?.id]);
 
   const chartData = React.useMemo(() => {
     try {

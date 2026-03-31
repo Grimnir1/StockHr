@@ -9,6 +9,8 @@ import { toast } from 'react-hot-toast';
 import { db } from '../firebase';
 import { collection, doc, getDoc, setDoc, onSnapshot, runTransaction } from 'firebase/firestore';
 import { Category, Supplier } from '../types';
+import { useAuthStore } from '../stores/auth.store';
+import { logAuditEvent } from '../lib/audit';
 
 const productSchema = z.object({
   name: z.string().min(1, 'Product name is required'),
@@ -30,6 +32,7 @@ const productSchema = z.object({
 type ProductFormValues = z.infer<typeof productSchema>;
 
 export default function ProductFormPage({ id }: { id?: string }) {
+  const user = useAuthStore((state) => state.user);
   const isEdit = !!id;
   const [isLoading, setIsLoading] = React.useState(false);
   const [isGeneratingSku, setIsGeneratingSku] = React.useState(false);
@@ -154,6 +157,13 @@ export default function ProductFormPage({ id }: { id?: string }) {
 
       if (isEdit && id) {
         await setDoc(doc(db, 'products', id), productData, { merge: true });
+        await logAuditEvent({
+          userId: user?.id,
+          action: 'UPDATE',
+          entityType: 'Product',
+          entityId: id,
+          details: `Updated product ${data.name} (${data.sku})`,
+        });
         toast.success('Product updated successfully');
       } else {
         const nextSkuSequence = await reserveNextSkuSequence();
@@ -169,6 +179,13 @@ export default function ProductFormPage({ id }: { id?: string }) {
         };
         delete (newProduct as any).initial_stock;
         await setDoc(productRef, newProduct);
+        await logAuditEvent({
+          userId: user?.id,
+          action: 'CREATE',
+          entityType: 'Product',
+          entityId: productRef.id,
+          details: `Created product ${newProduct.name} (${newProduct.sku})`,
+        });
         toast.success('Product created successfully');
       }
       window.location.href = '/products';

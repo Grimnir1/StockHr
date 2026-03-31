@@ -10,8 +10,11 @@ import { db, auth } from '../firebase';
 import { collection, query, onSnapshot, doc, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { sendPasswordResetEmail } from 'firebase/auth';
 import { toast } from 'react-hot-toast';
+import { useAuthStore } from '../stores/auth.store';
+import { logAuditEvent } from '../lib/audit';
 
 export default function UserManagementPage() {
+  const currentUser = useAuthStore((state) => state.user);
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = React.useState(false);
   const [users, setUsers] = React.useState<User[]>([]);
@@ -32,6 +35,13 @@ export default function UserManagementPage() {
   const handleUpdateRole = async (userId: string, newRole: string) => {
     try {
       await updateDoc(doc(db, 'users', userId), { role: newRole });
+      await logAuditEvent({
+        userId: currentUser?.id,
+        action: 'UPDATE',
+        entityType: 'UserRole',
+        entityId: userId,
+        details: `Updated role to ${newRole}`,
+      });
       toast.success(`Role updated to ${newRole}`);
     } catch (error) {
       console.error('Error updating role:', error);
@@ -42,6 +52,13 @@ export default function UserManagementPage() {
   const handleDeleteUser = async (userId: string) => {
     try {
       await deleteDoc(doc(db, 'users', userId));
+      await logAuditEvent({
+        userId: currentUser?.id,
+        action: 'DELETE',
+        entityType: 'User',
+        entityId: userId,
+        details: 'Deleted user account',
+      });
       toast.success('User deleted successfully');
     } catch (error) {
       console.error('Error deleting user:', error);
@@ -63,6 +80,13 @@ export default function UserManagementPage() {
         status: editingUser.status,
         updated_at: new Date().toISOString()
       });
+      await logAuditEvent({
+        userId: currentUser?.id,
+        action: 'UPDATE',
+        entityType: 'User',
+        entityId: editingUser.id,
+        details: `Updated user ${editingUser.name}`,
+      });
       toast.success('User updated successfully');
       setIsEditModalOpen(false);
       setEditingUser(null);
@@ -78,6 +102,13 @@ export default function UserManagementPage() {
       await updateDoc(userRef, { 
         password: 'password',
         updated_at: new Date().toISOString()
+      });
+      await logAuditEvent({
+        userId: currentUser?.id,
+        action: 'UPDATE',
+        entityType: 'UserCredential',
+        entityId: userId,
+        details: 'Reset user password in Firestore to default value',
       });
       toast.success('Password reset to "password" in database');
     } catch (error) {
@@ -127,6 +158,13 @@ export default function UserManagementPage() {
 
         try {
           await batch.commit();
+          await logAuditEvent({
+            userId: currentUser?.id,
+            action: 'CREATE',
+            entityType: 'SystemBootstrap',
+            entityId: 'bootstrap',
+            details: 'Bootstrapped demo categories, suppliers, products, and users',
+          });
           toast.success('Database bootstrapped successfully!');
         } catch (error) {
           console.error('Error bootstrapping:', error);
@@ -253,6 +291,13 @@ export default function UserManagementPage() {
         id: userRef.id,
         status: 'active',
         created_at: new Date().toISOString()
+      });
+      await logAuditEvent({
+        userId: currentUser?.id,
+        action: 'CREATE',
+        entityType: 'User',
+        entityId: userRef.id,
+        details: `Created user document for ${newUser.email}`,
       });
       toast.success('User document created. They can now sign up with this email.');
       setIsAddModalOpen(false);

@@ -16,6 +16,7 @@ import { Modal } from './ui/Modal';
 import { Product } from '../types';
 import { toast } from 'react-hot-toast';
 import { Search } from 'lucide-react';
+import { logAuditEvent } from '../lib/audit';
 
 interface StockMovementModalProps {
   isOpen: boolean;
@@ -137,13 +138,12 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
       });
 
       // 3. Create audit log
-      await addDoc(collection(db, 'audit_logs'), {
-        user_id: user?.id,
+      await logAuditEvent({
+        userId: user?.id,
         action: 'CREATE',
-        entity_type: 'StockMovement',
-        entity_id: formData.product_id,
+        entityType: 'StockMovement',
+        entityId: formData.product_id,
         details: `Recorded stock ${formData.type}: ${formData.quantity} ${selectedProduct.unit_of_measure} for ${selectedProduct.name}`,
-        created_at: new Date().toISOString(),
       });
 
       toast.success(`Stock ${formData.type === 'in' ? 'received' : 'issued'} successfully`);

@@ -8,6 +8,8 @@ import { db } from '../firebase';
 import { collection, query, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { Modal, ConfirmModal } from '../components/ui/Modal';
 import { toast } from 'react-hot-toast';
+import { useAuthStore } from '../stores/auth.store';
+import { logAuditEvent } from '../lib/audit';
 
 const getSupplierColumns = (
   onEdit: (supplier: Supplier) => void,
@@ -75,6 +77,7 @@ const getSupplierColumns = (
 ];
 
 export default function SupplierManagementPage() {
+  const user = useAuthStore((state) => state.user);
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [isAddModalOpen, setIsAddModalOpen] = React.useState(false);
@@ -121,6 +124,13 @@ export default function SupplierManagementPage() {
         id: supplierRef.id,
         created_at: new Date().toISOString(),
       });
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'CREATE',
+        entityType: 'Supplier',
+        entityId: supplierRef.id,
+        details: `Created supplier ${formData.name}`,
+      });
       toast.success('Supplier added successfully!');
       setIsAddModalOpen(false);
       setFormData({ name: '', contact_person: '', email: '', phone: '', address: '' });
@@ -162,6 +172,13 @@ export default function SupplierManagementPage() {
         },
         { merge: true }
       );
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'UPDATE',
+        entityType: 'Supplier',
+        entityId: editingSupplier.id,
+        details: `Updated supplier ${editFormData.name}`,
+      });
       toast.success('Supplier updated successfully!');
       setIsEditModalOpen(false);
       setEditingSupplier(null);
@@ -184,6 +201,13 @@ export default function SupplierManagementPage() {
     setIsDeleting(true);
     try {
       await deleteDoc(doc(db, 'suppliers', supplierToDelete.id));
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'DELETE',
+        entityType: 'Supplier',
+        entityId: supplierToDelete.id,
+        details: `Deleted supplier ${supplierToDelete.name}`,
+      });
       toast.success('Supplier deleted successfully!');
       setIsDeleteModalOpen(false);
       setSupplierToDelete(null);

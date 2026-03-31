@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { User } from '../types';
-import { db } from '../firebase';
-import { addDoc, collection } from 'firebase/firestore';
+import { logAuditEvent } from '../lib/audit';
 
 interface AuthState {
   user: User | null;
@@ -14,14 +13,12 @@ interface AuthState {
 
 async function createAuthAuditLog(user: User, action: 'LOGOUT') {
   try {
-    await addDoc(collection(db, 'audit_logs'), {
-      user_id: user.id,
+    await logAuditEvent({
+      userId: user.id,
       action,
-      entity_type: 'Auth',
-      entity_id: user.id,
+      entityType: 'Auth',
+      entityId: user.id,
       details: `User signed out (${user.email})`,
-      ip_address: '-',
-      created_at: new Date().toISOString(),
     });
   } catch (error) {
     console.error(`Failed to write ${action} audit log:`, error);

@@ -9,6 +9,7 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import { Product, StockMovement } from '../types';
+import { logAuditEvent } from './audit';
 
 const FIXED_ADU_ANALYSIS_DAYS = 7;
 const DEFAULT_SLOW_MOVING_INACTIVITY_DAYS = 14;
@@ -177,4 +178,16 @@ export async function recalculateProductVelocity(): Promise<void> {
   });
 
   await Promise.all([productBatch.commit(), alertBatch.commit()]);
+
+  await logAuditEvent({
+    action: 'UPDATE',
+    entityType: 'VelocityEngine',
+    entityId: 'recalculateProductVelocity',
+    details: `Recalculated velocity and alerts for ${products.length} products`,
+    metadata: {
+      productCount: products.length,
+      analysisPeriodDays,
+      inactivityDays,
+    },
+  });
 }

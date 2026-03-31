@@ -20,6 +20,7 @@ import SettingsPage from './pages/SettingsPage';
 import ProfilePage from './pages/ProfilePage';
 import { AppShell } from './components/ui/AppShell';
 import { RoleGuard } from './components/ui/RoleGuard';
+import { logAuditEvent } from './lib/audit';
 
 export default function App() {
   const { isAuthenticated, setUser, logout, user: currentUser } = useAuthStore();
@@ -51,6 +52,13 @@ export default function App() {
               last_login_at: new Date().toISOString(),
             };
             await setDoc(userRef, newUser);
+            await logAuditEvent({
+              userId: firebaseUser.uid,
+              action: 'CREATE',
+              entityType: 'User',
+              entityId: firebaseUser.uid,
+              details: `Auto-created user profile for ${newUser.email}`,
+            });
             setUser(newUser as any, await firebaseUser.getIdToken());
           }
         } catch (error) {

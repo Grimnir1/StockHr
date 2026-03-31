@@ -8,8 +8,11 @@ import { db } from '../firebase';
 import { collection, query, onSnapshot, doc, setDoc, deleteDoc } from 'firebase/firestore';
 import { Modal, ConfirmModal } from '../components/ui/Modal';
 import { toast } from 'react-hot-toast';
+import { useAuthStore } from '../stores/auth.store';
+import { logAuditEvent } from '../lib/audit';
 
 export default function CategoryManagementPage() {
+  const user = useAuthStore((state) => state.user);
   const [search, setSearch] = React.useState('');
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [productCountByCategory, setProductCountByCategory] = React.useState<Record<string, number>>({});
@@ -81,6 +84,13 @@ export default function CategoryManagementPage() {
         product_count: 0,
         created_at: new Date().toISOString(),
       });
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'CREATE',
+        entityType: 'Category',
+        entityId: categoryRef.id,
+        details: `Created category ${formData.name}`,
+      });
       toast.success('Category added successfully!');
       setIsAddModalOpen(false);
       setFormData({ name: '', description: '', color: '#2563EB' });
@@ -113,6 +123,13 @@ export default function CategoryManagementPage() {
         ...editFormData,
         updated_at: new Date().toISOString(),
       }, { merge: true });
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'UPDATE',
+        entityType: 'Category',
+        entityId: editingCategory.id,
+        details: `Updated category ${editFormData.name}`,
+      });
       toast.success('Category updated successfully!');
       setIsEditModalOpen(false);
       setEditingCategory(null);
@@ -142,6 +159,13 @@ export default function CategoryManagementPage() {
     setIsDeleting(true);
     try {
       await deleteDoc(doc(db, 'categories', categoryToDelete.id));
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'DELETE',
+        entityType: 'Category',
+        entityId: categoryToDelete.id,
+        details: `Deleted category ${categoryToDelete.name}`,
+      });
       toast.success('Category deleted successfully!');
       setIsDeleteModalOpen(false);
       setCategoryToDelete(null);

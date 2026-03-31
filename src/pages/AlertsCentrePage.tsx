@@ -6,8 +6,11 @@ import { formatDate, cn } from '../lib/utils';
 import { db } from '../firebase';
 import { collection, query, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { toast } from 'react-hot-toast';
+import { useAuthStore } from '../stores/auth.store';
+import { logAuditEvent } from '../lib/audit';
 
 export default function AlertsCentrePage() {
+  const user = useAuthStore((state) => state.user);
   const [activeTab, setActiveTab] = React.useState<'all' | 'low' | 'slow' | 'out'>('all');
   const [dbAlerts, setDbAlerts] = React.useState<Alert[]>([]);
   const [derivedAlerts, setDerivedAlerts] = React.useState<Alert[]>([]);
@@ -128,7 +131,15 @@ export default function AlertsCentrePage() {
     if (!alertId || acknowledgingId) return;
 
     if (alertId.startsWith('derived-')) {
+      const alert = alerts.find((item) => item.id === alertId);
       setDismissedDerivedAlertIds((prev) => [...prev, alertId]);
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'UPDATE',
+        entityType: 'Alert',
+        entityId: alertId,
+        details: `Acknowledged derived alert for ${alert?.product_name || 'unknown product'}`,
+      });
       toast.success('Alert acknowledged');
       return;
     }
@@ -139,6 +150,14 @@ export default function AlertsCentrePage() {
         is_acknowledged: true,
         status: 'acknowledged',
         acknowledged_at: new Date().toISOString(),
+      });
+      const alert = alerts.find((item) => item.id === alertId);
+      await logAuditEvent({
+        userId: user?.id,
+        action: 'UPDATE',
+        entityType: 'Alert',
+        entityId: alertId,
+        details: `Acknowledged alert for ${alert?.product_name || 'unknown product'}`,
       });
       toast.success('Alert acknowledged');
     } catch (error) {
