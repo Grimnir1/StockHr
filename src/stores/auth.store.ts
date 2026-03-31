@@ -16,7 +16,6 @@ async function createAuthAuditLog(user: User, action: 'LOGOUT') {
   try {
     await addDoc(collection(db, 'audit_logs'), {
       user_id: user.id,
-      user_name: user.name || user.email || 'Unknown User',
       action,
       entity_type: 'Auth',
       entity_id: user.id,

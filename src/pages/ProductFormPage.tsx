@@ -141,12 +141,10 @@ export default function ProductFormPage({ id }: { id?: string }) {
     setIsLoading(true);
     try {
       const selectedCategory = categories.find(c => c.id === data.category_id);
-      const selectedSupplier = suppliers.find(s => s.id === data.supplier_id);
 
       const productData = {
         ...data,
         category_name: selectedCategory?.name || '',
-        supplier_name: selectedSupplier?.name || '',
         updated_at: new Date().toISOString(),
         // DSS calculations (simplified for now)
         adu: 0, 

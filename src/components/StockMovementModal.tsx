@@ -139,7 +139,6 @@ export const StockMovementModal: React.FC<StockMovementModalProps> = ({
       // 3. Create audit log
       await addDoc(collection(db, 'audit_logs'), {
         user_id: user?.id,
-        user_name: user?.name,
         action: 'CREATE',
         entity_type: 'StockMovement',
         entity_id: formData.product_id,

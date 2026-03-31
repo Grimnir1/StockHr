@@ -8,7 +8,11 @@ import { formatDate, cn } from '../lib/utils';
 import { db } from '../firebase';
 import { collection, query, orderBy, onSnapshot } from 'firebase/firestore';
 
-const auditColumns: ColumnDef<AuditLog>[] = [
+type AuditLogRow = AuditLog & {
+  user_display_name: string;
+};
+
+const auditColumns: ColumnDef<AuditLogRow>[] = [
   {
     header: 'Timestamp',
     accessorKey: 'created_at',
@@ -16,7 +20,7 @@ const auditColumns: ColumnDef<AuditLog>[] = [
   },
   {
     header: 'User',
-    accessorKey: 'user_name',
+    accessorKey: 'user_display_name',
     cell: ({ getValue }) => <span className="font-medium">{getValue() as string}</span>,
   },
   {
@@ -69,17 +73,21 @@ const auditColumns: ColumnDef<AuditLog>[] = [
 
 export default function AuditTrailPage() {
   const [logs, setLogs] = React.useState<AuditLog[]>([]);
+  const [userNamesById, setUserNamesById] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(true);
   const [search, setSearch] = React.useState('');
   const [actionFilter, setActionFilter] = React.useState('');
 
   React.useEffect(() => {
-    const q = query(collection(db, 'audit_logs'), orderBy('created_at', 'desc'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const qLogs = query(collection(db, 'audit_logs'), orderBy('created_at', 'desc'));
+    const qUsers = query(collection(db, 'users'));
+
+    const unsubscribeLogs = onSnapshot(qLogs, (snapshot) => {
       const mapped = snapshot.docs.map((logDoc) => {
         const data = logDoc.data() as any;
         return {
           id: logDoc.id,
+          user_id: data.user_id || '',
           user_name: data.user_name || 'System',
           action: data.action || 'UPDATE',
           entity_type: data.entity_type || 'Unknown',
@@ -95,17 +103,37 @@ export default function AuditTrailPage() {
       console.error('Error loading audit logs:', error);
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    const unsubscribeUsers = onSnapshot(qUsers, (snapshot) => {
+      const nextNamesById: Record<string, string> = {};
+      snapshot.docs.forEach((userDoc) => {
+        const userData = userDoc.data() as { name?: string; email?: string };
+        nextNamesById[userDoc.id] = userData.name || userData.email || 'Unknown User';
+      });
+      setUserNamesById(nextNamesById);
+    });
+
+    return () => {
+      unsubscribeLogs();
+      unsubscribeUsers();
+    };
   }, []);
+
+  const logsWithUserNames = React.useMemo<AuditLogRow[]>(() => {
+    return logs.map((log) => ({
+      ...log,
+      user_display_name: (log.user_id && userNamesById[log.user_id]) || log.user_name || 'System',
+    }));
+  }, [logs, userNamesById]);
 
   const filteredLogs = React.useMemo(() => {
     const searchTerm = search.trim().toLowerCase();
 
-    return logs.filter((log) => {
+    return logsWithUserNames.filter((log) => {
       const matchesAction = !actionFilter || log.action === actionFilter;
 
       const matchesSearch = !searchTerm || [
-        log.user_name,
+        log.user_display_name,
         log.action,
         log.entity_type,
         log.entity_id,
@@ -117,7 +145,7 @@ export default function AuditTrailPage() {
 
       return matchesAction && matchesSearch;
     });
-  }, [logs, search, actionFilter]);
+  }, [logsWithUserNames, search, actionFilter]);
 
   return (
     <div className="space-y-6">

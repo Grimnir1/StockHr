@@ -80,6 +80,7 @@ export interface Alert {
 
 export interface AuditLog {
   id: string;
+  user_id?: string;
   user_name: string;
   action: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'LOGOUT';
   entity_type: string;

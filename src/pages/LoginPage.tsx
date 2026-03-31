@@ -21,7 +21,6 @@ async function logLoginAudit(user: { id: string; name?: string; email?: string }
   try {
     await addDoc(collection(db, 'audit_logs'), {
       user_id: user.id,
-      user_name: user.name || user.email || 'Unknown User',
       action: 'LOGIN',
       entity_type: 'Auth',
       entity_id: user.id,

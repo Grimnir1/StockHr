@@ -8,7 +8,7 @@ import { Product } from '../types';
 import { formatCurrency, cn } from '../lib/utils';
 import { Bar } from 'react-chartjs-2';
 import { db } from '../firebase';
-import { collection, query, onSnapshot, where } from 'firebase/firestore';
+import { collection, query, onSnapshot } from 'firebase/firestore';
 
 import {
   Chart as ChartJS,
@@ -22,7 +22,7 @@ import {
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-const reorderColumns: ColumnDef<Product>[] = [
+const getReorderColumns = (supplierNamesById: Record<string, string>): ColumnDef<Product>[] => [
   {
     header: 'Product',
     accessorKey: 'name',
@@ -51,7 +51,8 @@ const reorderColumns: ColumnDef<Product>[] = [
   },
   {
     header: 'Supplier',
-    accessorKey: 'supplier_name',
+    id: 'supplier_name',
+    cell: ({ row }) => supplierNamesById[row.original.supplier_id] || 'N/A',
   },
   {
     header: 'Est. Cost',
@@ -115,16 +116,34 @@ const velocityColumns: ColumnDef<Product>[] = [
 export default function DSSDashboardPage() {
   const [activeTab, setActiveTab] = React.useState<'overview' | 'reorder' | 'velocity'>('overview');
   const [products, setProducts] = React.useState<Product[]>([]);
+  const [supplierNamesById, setSupplierNamesById] = React.useState<Record<string, string>>({});
   const [loading, setLoading] = React.useState(true);
 
   React.useEffect(() => {
-    const q = query(collection(db, 'products'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
+    const qProducts = query(collection(db, 'products'));
+    const qSuppliers = query(collection(db, 'suppliers'));
+
+    const unsubscribeProducts = onSnapshot(qProducts, (snapshot) => {
       setProducts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any as Product)));
       setLoading(false);
     });
-    return () => unsubscribe();
+
+    const unsubscribeSuppliers = onSnapshot(qSuppliers, (snapshot) => {
+      const nextMap: Record<string, string> = {};
+      snapshot.docs.forEach((supplierDoc) => {
+        const supplierData = supplierDoc.data() as { name?: string };
+        nextMap[supplierDoc.id] = supplierData.name || '';
+      });
+      setSupplierNamesById(nextMap);
+    });
+
+    return () => {
+      unsubscribeProducts();
+      unsubscribeSuppliers();
+    };
   }, []);
+
+  const reorderColumns = React.useMemo(() => getReorderColumns(supplierNamesById), [supplierNamesById]);
 
   const reorderItems = products.filter(p => p.current_stock <= p.reorder_point);
   const outOfStockItems = products.filter(p => p.current_stock === 0);

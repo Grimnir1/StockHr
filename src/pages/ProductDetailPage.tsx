@@ -5,7 +5,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { RoleGuard } from '../components/ui/RoleGuard';
 import { ConfirmModal } from '../components/ui/Modal';
 import { formatCurrency, formatDate, cn } from '../lib/utils';
-import { Product, StockMovement } from '../types';
+import { Product, StockMovement, Supplier } from '../types';
 import { DataTable } from '../components/ui/DataTable';
 import { ColumnDef } from '@tanstack/react-table';
 import { Line } from 'react-chartjs-2';
@@ -72,6 +72,7 @@ const movementColumns: ColumnDef<StockMovement>[] = [
 
 export default function ProductDetailPage({ id }: { id: string }) {
   const [product, setProduct] = React.useState<Product | null>(null);
+  const [supplier, setSupplier] = React.useState<Supplier | null>(null);
   const [movements, setMovements] = React.useState<StockMovement[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [isDeleting, setIsDeleting] = React.useState(false);
@@ -101,6 +102,23 @@ export default function ProductDetailPage({ id }: { id: string }) {
       unsubMovements();
     };
   }, [id]);
+
+  React.useEffect(() => {
+    if (!product?.supplier_id) {
+      setSupplier(null);
+      return;
+    }
+
+    const unsubSupplier = onSnapshot(doc(db, 'suppliers', product.supplier_id), (supplierSnap) => {
+      if (supplierSnap.exists()) {
+        setSupplier({ id: supplierSnap.id, ...supplierSnap.data() } as any as Supplier);
+      } else {
+        setSupplier(null);
+      }
+    });
+
+    return () => unsubSupplier();
+  }, [product?.supplier_id]);
 
   const navigateTo = React.useCallback((nextPath: string) => {
     window.history.pushState({}, '', nextPath);
@@ -260,7 +278,7 @@ export default function ProductDetailPage({ id }: { id: string }) {
             <div className="grid grid-cols-2 gap-6">
               <div>
                 <p className="text-[10px] font-bold text-neutral-700/40 uppercase tracking-widest mb-1">Supplier</p>
-                <p className="text-sm font-medium">{product.supplier_name || 'N/A'}</p>
+                <p className="text-sm font-medium">{supplier?.name || 'N/A'}</p>
               </div>
               <div>
                 <p className="text-[10px] font-bold text-neutral-700/40 uppercase tracking-widest mb-1">Storage Location</p>

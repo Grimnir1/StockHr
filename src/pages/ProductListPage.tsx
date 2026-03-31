@@ -181,7 +181,6 @@ export default function ProductListPage() {
     setIsSubmitting(true);
     try {
       const selectedCategory = categories.find(c => c.id === formData.category_id);
-      const selectedSupplier = suppliers.find(s => s.id === formData.supplier_id);
       
       // Calculate basic DSS metrics for the new product
       const adu = 0; // Initial ADU is 0
@@ -197,7 +196,6 @@ export default function ProductListPage() {
         ...formData,
         id: productRef.id,
         category_name: selectedCategory?.name || '',
-        supplier_name: selectedSupplier?.name || '',
         current_stock: Number(formData.current_stock),
         reorder_point: Number(formData.reorder_point),
         unit_price: Number(formData.unit_price),
