@@ -11,6 +11,55 @@ import { toast } from 'react-hot-toast';
 import { useAuthStore } from '../stores/auth.store';
 import { logAuditEvent } from '../lib/audit';
 
+function hslToHex(h: number, s: number, l: number) {
+  s /= 100;
+  l /= 100;
+
+  const c = (1 - Math.abs(2 * l - 1)) * s;
+  const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+  const m = l - c / 2;
+
+  let r = 0;
+  let g = 0;
+  let b = 0;
+
+  if (h >= 0 && h < 60) {
+    r = c;
+    g = x;
+  } else if (h >= 60 && h < 120) {
+    r = x;
+    g = c;
+  } else if (h >= 120 && h < 180) {
+    g = c;
+    b = x;
+  } else if (h >= 180 && h < 240) {
+    g = x;
+    b = c;
+  } else if (h >= 240 && h < 300) {
+    r = x;
+    b = c;
+  } else {
+    r = c;
+    b = x;
+  }
+
+  const toHex = (value: number) => Math.round((value + m) * 255).toString(16).padStart(2, '0');
+
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+}
+
+function generateCategoryColor(name: string) {
+  const normalized = name.trim().toLowerCase();
+  let hash = 0;
+
+  for (let i = 0; i < normalized.length; i += 1) {
+    hash = normalized.charCodeAt(i) + ((hash << 5) - hash);
+  }
+
+  const hue = Math.abs(hash) % 360;
+  return hslToHex(hue, 68, 48);
+}
+
 export default function CategoryManagementPage() {
   const user = useAuthStore((state) => state.user);
   const [search, setSearch] = React.useState('');
@@ -28,12 +77,10 @@ export default function CategoryManagementPage() {
   const [formData, setFormData] = React.useState({
     name: '',
     description: '',
-    color: '#2563EB',
   });
   const [editFormData, setEditFormData] = React.useState({
     name: '',
     description: '',
-    color: '#2563EB',
   });
 
   React.useEffect(() => {
@@ -69,6 +116,7 @@ export default function CategoryManagementPage() {
   const categoriesWithCounts = React.useMemo(() => {
     return categories.map((category) => ({
       ...category,
+      color: category.color || generateCategoryColor(category.name || ''),
       product_count: productCountByCategory[category.id] || 0,
     }));
   }, [categories, productCountByCategory]);
@@ -78,8 +126,10 @@ export default function CategoryManagementPage() {
     setIsSubmitting(true);
     try {
       const categoryRef = doc(collection(db, 'categories'));
+      const generatedColor = generateCategoryColor(formData.name);
       await setDoc(categoryRef, {
         ...formData,
+        color: generatedColor,
         id: categoryRef.id,
         product_count: 0,
         created_at: new Date().toISOString(),
@@ -93,7 +143,7 @@ export default function CategoryManagementPage() {
       });
       toast.success('Category added successfully!');
       setIsAddModalOpen(false);
-      setFormData({ name: '', description: '', color: '#2563EB' });
+      setFormData({ name: '', description: '' });
     } catch (error) {
       console.error('Error adding category:', error);
       toast.error('Failed to add category');
@@ -107,7 +157,6 @@ export default function CategoryManagementPage() {
     setEditFormData({
       name: category.name || '',
       description: category.description || '',
-      color: category.color || '#2563EB',
     });
     setIsEditModalOpen(true);
   };
@@ -118,9 +167,11 @@ export default function CategoryManagementPage() {
 
     setIsSubmitting(true);
     try {
+      const generatedColor = generateCategoryColor(editFormData.name);
       await setDoc(doc(db, 'categories', editingCategory.id), {
         ...editingCategory,
         ...editFormData,
+        color: generatedColor,
         updated_at: new Date().toISOString(),
       }, { merge: true });
       await logAuditEvent({
@@ -324,20 +375,13 @@ export default function CategoryManagementPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Color Code</label>
-            <div className="flex gap-2">
-              <input
-                type="color"
-                value={editFormData.color}
-                onChange={(e) => setEditFormData({ ...editFormData, color: e.target.value })}
-                className="w-10 h-10 p-0 border-none bg-transparent cursor-pointer"
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Category Color</label>
+            <div className="flex items-center gap-3 px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-lg">
+              <span
+                className="w-4 h-4 rounded-full"
+                style={{ backgroundColor: generateCategoryColor(editFormData.name || editingCategory?.name || '') }}
               />
-              <input
-                type="text"
-                value={editFormData.color}
-                onChange={(e) => setEditFormData({ ...editFormData, color: e.target.value })}
-                className="flex-1 px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm font-mono"
-              />
+              <span className="text-xs text-neutral-700/60">Auto-generated from category name</span>
             </div>
           </div>
         </form>
@@ -382,20 +426,13 @@ export default function CategoryManagementPage() {
             />
           </div>
           <div className="space-y-1.5">
-            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Color Code</label>
-            <div className="flex gap-2">
-              <input 
-                type="color" 
-                value={formData.color}
-                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                className="w-10 h-10 p-0 border-none bg-transparent cursor-pointer" 
+            <label className="text-xs font-bold text-neutral-700/60 uppercase tracking-widest">Category Color</label>
+            <div className="flex items-center gap-3 px-3 py-2 bg-neutral-50 border border-neutral-100 rounded-lg">
+              <span
+                className="w-4 h-4 rounded-full"
+                style={{ backgroundColor: generateCategoryColor(formData.name) }}
               />
-              <input 
-                type="text" 
-                value={formData.color}
-                onChange={(e) => setFormData({ ...formData, color: e.target.value })}
-                className="flex-1 px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm font-mono" 
-              />
+              <span className="text-xs text-neutral-700/60">Auto-generated from category name</span>
             </div>
           </div>
         </form>
