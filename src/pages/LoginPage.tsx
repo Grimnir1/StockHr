@@ -303,7 +303,7 @@ export default function LoginPage() {
             )}
           </form>
 
-          {!isResetting && (
+          {/* {!isResetting && (
             <div className="mt-6 pt-6 border-t border-neutral-100 text-center">
               <button
                 onClick={() => {
@@ -315,7 +315,7 @@ export default function LoginPage() {
                 {isSignUp ? 'Already have an account? Sign In' : "Don't have an account? Sign Up"}
               </button>
             </div>
-          )}
+          )} */}
         </div>
 
         <p className="text-center text-xs text-neutral-700/40 mt-8">

@@ -2,7 +2,7 @@ import React from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { ArrowLeft, Save, Info } from 'lucide-react';
+import { ArrowLeft, Save, Info, Search } from 'lucide-react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { FormField } from '../components/ui/FormField';
 import { toast } from 'react-hot-toast';
@@ -38,7 +38,45 @@ export default function ProductFormPage({ id }: { id?: string }) {
   const [isGeneratingSku, setIsGeneratingSku] = React.useState(false);
   const [categories, setCategories] = React.useState<Category[]>([]);
   const [suppliers, setSuppliers] = React.useState<Supplier[]>([]);
+  const [supplierSearch, setSupplierSearch] = React.useState('');
+  const [isSupplierDropdownOpen, setIsSupplierDropdownOpen] = React.useState(false);
+  const [categorySearch, setCategorySearch] = React.useState('');
+  const [isCategoryDropdownOpen, setIsCategoryDropdownOpen] = React.useState(false);
   const [fetchingData, setFetchingData] = React.useState(isEdit);
+  const supplierDropdownRef = React.useRef<HTMLDivElement>(null);
+  const categoryDropdownRef = React.useRef<HTMLDivElement>(null);
+
+  const filteredSuppliers = React.useMemo(() => {
+    const query = supplierSearch.trim().toLowerCase();
+    if (!query) return suppliers;
+
+    return suppliers.filter((supplier) =>
+      supplier.name.toLowerCase().includes(query)
+    );
+  }, [supplierSearch, suppliers]);
+
+  const filteredCategories = React.useMemo(() => {
+    const query = categorySearch.trim().toLowerCase();
+    if (!query) return categories;
+
+    return categories.filter((category) =>
+      category.name.toLowerCase().includes(query)
+    );
+  }, [categorySearch, categories]);
+
+  React.useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (supplierDropdownRef.current && !supplierDropdownRef.current.contains(event.target as Node)) {
+        setIsSupplierDropdownOpen(false);
+      }
+      if (categoryDropdownRef.current && !categoryDropdownRef.current.contains(event.target as Node)) {
+        setIsCategoryDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const {
     register,
@@ -238,26 +276,80 @@ export default function ProductFormPage({ id }: { id?: string }) {
               />
             </FormField>
             <FormField label="Category" name="category_id" error={errors.category_id?.message} required className="md:col-span-1">
-              <select
-                {...register('category_id')}
-                className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">Select Category</option>
-                {categories.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
+              <div className="relative" ref={categoryDropdownRef}>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={categorySearch}
+                    onChange={(e) => setCategorySearch(e.target.value)}
+                    onFocus={() => setIsCategoryDropdownOpen(true)}
+                    placeholder="Search categories..."
+                    className="w-full pl-9 pr-4 py-2.5 bg-neutral-50 border border-neutral-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                {isCategoryDropdownOpen && filteredCategories.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-100 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+                    {filteredCategories.map((category) => (
+                      <button
+                        key={category.id}
+                        type="button"
+                        onClick={() => {
+                          setValue('category_id', category.id);
+                          setCategorySearch(category.name);
+                          setIsCategoryDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-primary/5 transition-colors border-b border-neutral-50 last:border-b-0 text-sm"
+                      >
+                        <div className="font-medium text-neutral-900">{category.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {isCategoryDropdownOpen && filteredCategories.length === 0 && categorySearch && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-100 rounded-lg shadow-lg z-50 p-4 text-center text-sm text-neutral-500">
+                    No categories found
+                  </div>
+                )}
+              </div>
             </FormField>
             <FormField label="Supplier" name="supplier_id" error={errors.supplier_id?.message} required className="md:col-span-1">
-              <select
-                {...register('supplier_id')}
-                className="w-full px-4 py-2.5 bg-neutral-50 border border-neutral-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
-              >
-                <option value="">Select Supplier</option>
-                {suppliers.map(s => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+              <div className="relative" ref={supplierDropdownRef}>
+                <div className="relative">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-neutral-500 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={supplierSearch}
+                    onChange={(e) => setSupplierSearch(e.target.value)}
+                    onFocus={() => setIsSupplierDropdownOpen(true)}
+                    placeholder="Search suppliers..."
+                    className="w-full pl-9 pr-4 py-2.5 bg-neutral-50 border border-neutral-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary/20"
+                  />
+                </div>
+                {isSupplierDropdownOpen && filteredSuppliers.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-100 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+                    {filteredSuppliers.map((supplier) => (
+                      <button
+                        key={supplier.id}
+                        type="button"
+                        onClick={() => {
+                          setValue('supplier_id', supplier.id);
+                          setSupplierSearch(supplier.name);
+                          setIsSupplierDropdownOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2.5 hover:bg-primary/5 transition-colors border-b border-neutral-50 last:border-b-0 text-sm"
+                      >
+                        <div className="font-medium text-neutral-900">{supplier.name}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {isSupplierDropdownOpen && filteredSuppliers.length === 0 && supplierSearch && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white border border-neutral-100 rounded-lg shadow-lg z-50 p-4 text-center text-sm text-neutral-500">
+                    No suppliers found
+                  </div>
+                )}
+              </div>
             </FormField>
             <FormField label="Description" name="description" error={errors.description?.message} className="md:col-span-2">
               <textarea
