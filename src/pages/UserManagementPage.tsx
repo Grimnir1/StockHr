@@ -452,7 +452,7 @@ export default function UserManagementPage() {
               <select 
                 className="w-full px-4 py-2 bg-neutral-50 border border-neutral-100 rounded-lg text-sm"
                 value={editingUser.role}
-                onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value })}
+                onChange={(e) => setEditingUser({ ...editingUser, role: e.target.value as 'admin' | 'manager' | 'staff' })}
               >
                 <option value="staff">Regular Staff</option>
                 <option value="manager">Store Manager</option>
